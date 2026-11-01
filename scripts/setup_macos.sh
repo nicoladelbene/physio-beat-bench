@@ -1,14 +1,16 @@
 #!/bin/bash
-# Install the native tools the bench needs, and build WFDB into data/tools/wfdb.
+# Install the native tools the bench needs, and build WFDB 10.7.0 into data/tools/wfdb.
 set -euo pipefail
 brew install octave gsl boost bash openjdk flac libsndfile curl
-octave --quiet --eval "pkg install -forge control; pkg install -forge signal"
+packages=$(octave --quiet --eval "x = pkg('list'); printf('%s ', cellfun(@(p) p.name, x, 'UniformOutput', false){:})")
+case " $packages " in *" signal "*) ;; *)
+  octave --quiet --eval "pkg install -forge control; pkg install -forge signal" ;;
+esac
 mkdir -p data/tools
-cd data/tools
-if [ ! -d wfdb ]; then
-  curl -L -o wfdb.zip https://physionet.org/content/wfdb/get-zip/10.7.0/
-  unzip -q wfdb.zip
-  source_dir=$(find . -maxdepth 2 -name configure -exec dirname {} \; | head -1)
-  (cd "$source_dir" && ./configure --prefix="$PWD/../wfdb" --without-netfiles && make -j8 install)
+tools=$(cd data/tools && pwd)
+if [ ! -x "$tools/wfdb/bin/bxb" ]; then
+  curl -fL -o "$tools/wfdb.tar.gz" https://github.com/bemoody/wfdb/archive/refs/tags/10.7.0.tar.gz
+  tar -xzf "$tools/wfdb.tar.gz" -C "$tools"
+  (cd "$tools/wfdb-10.7.0" && ./configure --prefix="$tools/wfdb" --without-netfiles && make -j8 install)
 fi
-echo "Now run: export WFDB_HOME=$PWD/wfdb"
+echo "Now run: export WFDB_HOME=$tools/wfdb"

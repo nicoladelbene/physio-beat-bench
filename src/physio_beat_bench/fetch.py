@@ -51,6 +51,9 @@ def download(url: str, destination: Path) -> Path:
     partial = destination.with_suffix(".partial")
     with urllib.request.urlopen(url) as response, partial.open("wb") as output:
         shutil.copyfileobj(response, output)
+    if not zipfile.is_zipfile(partial):  # PhysioNet can return an HTML error page with a body
+        partial.unlink()
+        raise RuntimeError(f"{url} did not return a zip archive; try again later")
     partial.rename(destination)
     return destination
 
