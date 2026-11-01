@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import shutil
 import tarfile
 import tempfile
@@ -160,13 +161,18 @@ def run_entries(
                 print(f"FAILED {name}: {error!r}", flush=True)
 
 
-def _first_ecg(record: wfdb.Record) -> np.ndarray:
-    names = [name.upper() for name in record.sig_name]
-    for prefix in ("ECG", "II", "I", "V", "MLII", "AVR", "AVL", "AVF", "III"):
-        for index, name in enumerate(names):
-            if name.startswith(prefix):
-                return np.nan_to_num(record.p_signal[:, index])
-    return np.nan_to_num(record.p_signal[:, 0])
+ECG_LABEL = re.compile(r"^(ECG.*|EKG.*|I{1,3}|MLI{1,3}|AV[RLF]|V\d?)$", re.IGNORECASE)
+
+
+class NoEcgChannelError(ValueError):
+    """The record has no ECG, so an ECG-only detector cannot run on it."""
+
+
+def first_ecg_channel(labels: list[str], signal: np.ndarray) -> np.ndarray:
+    for index, label in enumerate(labels):
+        if ECG_LABEL.match(label.strip()):
+            return np.nan_to_num(signal[:, index])
+    raise NoEcgChannelError(str(labels))
 
 
 def detect_modern(detector: str, ecg: np.ndarray, fs: float) -> np.ndarray:
@@ -194,7 +200,9 @@ def _modern_record(detector: str, layout: Layout, set_name: str, record: str) ->
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             signal = wfdb.rdrecord(str(base))
-            detections = detect_modern(detector, _first_ecg(signal), fs)
+            detections = detect_modern(
+                detector, first_ecg_channel(signal.sig_name, signal.p_signal), fs
+            )
         beats = np.unique(np.asarray(detections, dtype=int))
         beats = beats[(beats > 0) & (beats < signal.sig_len)]
         with tempfile.TemporaryDirectory() as folder:

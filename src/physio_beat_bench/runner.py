@@ -20,7 +20,7 @@ from .annotations import same_beats
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPAT = REPO_ROOT / "compat"
 SETUP_TIMEOUT_SECONDS = 300  # the Challenge's own limit for setup.sh
-OCTAVE_PACKAGE_LIST = Path.home() / ".config/octave/api-v61/octave_packages"
+OCTAVE_PACKAGE_LIST = next(iter(sorted(Path.home().glob(".config/octave/*/octave_packages"))), "")
 
 
 class RecordStatus(StrEnum):
