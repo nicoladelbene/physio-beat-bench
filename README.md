@@ -21,9 +21,9 @@ Scores on the 100-record augmented set, using the Challenge's official scorer (`
 
 | Detector | Signals used | Score (95% CI) | Official hidden-test score, 2015 |
 |---|---|---|---|
-| Pangerc & Jager, entry 420 | Multimodal | 95.48 (93.56–97.10) | 93.64 |
-| Behar, Johnson et al., entry 425 | Multimodal | 90.96 (87.77–93.85) | 91.50 |
-| Ding, entry 454 | See entry | 90.12 (87.02–92.92) | 87.66 |
+| Pangerc & Jager, entry 420 | ECG + blood pressure | 95.48 (93.56–97.10) | 93.64 |
+| Behar, Johnson et al., entry 425 | ECG + blood pressure | 90.96 (87.77–93.85) | 91.50 |
+| Ding, entry 454 | ECG + blood pressure | 90.12 (87.02–92.92) | 87.66 |
 | De Cooman, entry 420 | See entry | 87.93 (82.73–92.72) | 90.02 |
 | `gqrs` from WFDB (a 2014 entry is exactly this command) | One ECG | 86.41 (82.63–90.13) | 87.38 |
 | NeuroKit2 `elgendi2010` | One ECG | 85.73 (80.87–90.11) | – |
@@ -43,7 +43,7 @@ Full results: [`results/summary.csv`](results/summary.csv).
 | `gqrs` − NeuroKit2 default | +6.56 (2.78 to 10.83) |
 
 **What this supports, on this noisy ICU dataset:**
-- The best 2014 multimodal detector tested with this comparison still clearly beats single-channel library defaults.
+- A leading 2014 multimodal detector (Behar, Johnson et al.) still beats the best single-channel library default tested, and the plain `gqrs` baseline.
 - A library's default isn't its best method. NeuroKit2's `elgendi2010` scores 5.87 (2.21 to 10.61) above its own default here.
 - No current single-channel default tested here beats the plain `gqrs` baseline. These are defaults, not tuned configurations, on a deliberately hard dataset, so this says nothing about clean recordings or about what the libraries can do when configured for this data.
 
@@ -126,4 +126,4 @@ All detection methods belong to their authors, listed in each entry's `AUTHORS` 
 - Johnson, Behar, Andreotti, Clifford, Oster, [Multimodal heart beat detection using signal quality indices](https://integ04-cnspfv.archimed.fr/doc/OAI_1/oai-HAL-hal-01730819v1), Physiological Measurement 2015
 - [WFDB Software Package](https://github.com/bemoody/wfdb) 10.7.0, [wfdb-python](https://github.com/MIT-LCP/wfdb-python), [NeuroKit2](https://github.com/neuropsychology/NeuroKit)
 
-Code: [MIT](LICENSE). Run in sandboxed form only; entries retain their authors' own terms and aren't included here.
+Code in this repo: [MIT](LICENSE). Challenge entries keep their authors' own terms and aren't included here.

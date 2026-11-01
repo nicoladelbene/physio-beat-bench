@@ -156,7 +156,7 @@ def figure(summary: pd.DataFrame, path: Path) -> None:
         0.01, 0.005,
         f"Lines: 95% bootstrap interval over records. Axis starts at {LOWEST_CHARTED_SCORE}; "
         "lower scorers are in results/summary.csv.\n"
-        "Follow-up entries could have been developed with this set, so their scores may be optimistic.",
+        "Follow-up entries could have been developed with this set, so scores may be optimistic.",
         color=muted, fontsize=7.5,
     )  # fmt: skip
     fig.tight_layout(rect=(0, 0.035, 1, 1))
