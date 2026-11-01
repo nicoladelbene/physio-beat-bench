@@ -1,6 +1,6 @@
 # physio-beat-bench
 
-**Can 12-year-old heartbeat detectors still reproduce their own results?** This repo re-runs all 35 entries with sources in the [PhysioNet/CinC Challenge 2014](https://physionet.org/content/challenge-2014/1.0.0/) archive on a 2026 Mac, and checks each one against the outputs it archived in 2014–15.
+**Can 12-year-old heartbeat detectors still reproduce their own results?** This repo re-runs all 35 entries with sources in the [PhysioNet/CinC Challenge 2014](https://moody-challenge.physionet.org/2014/) archive on a 2026 Mac, and checks each one against the outputs it archived in 2014–15.
 
 > **The remote download is unverified.** PhysioNet's servers returned HTTP 500 for this archive during every final check, so `physio-beat-bench fetch` has not been tested end to end. The published results and the clean-clone run used a local copy of the archive; see [Reproduce it](#reproduce-it).
 
@@ -127,14 +127,14 @@ PhysioNet archive ─► fetch ─► records + 35 entry archives
                 └─► bxb -f 0 ─► per-record counts ─► score + bootstrap interval
 ```
 
-Entries run through their original `setup.sh` and `next.sh`, and **their source code is not modified**. The changes around them are all in [`compat/`](compat/):
+Entries run through their original `setup.sh` and `next.sh`, and **no entry's own algorithm code is edited**. The changes are made to a working copy, by [`compat/`](compat/) and the runner:
 
 - **Compiler flags** accept 2014-era C, with `-ffp-contract=off` so arithmetic isn't silently rearranged.
 - **Octave shims** replace the bundled 2014 WFDB toolbox, whose Linux native libraries don't load here, with calls to the native WFDB tools. Newly written, and tested by round trip.
 - **Small Linux-to-macOS adapters** cover `sed -i`, `tac` and `wfdb2mat`'s report format, and a 2014-era `mean`, `nanmean` and friends that Octave 11 changed or dropped.
-- **Linux-only prebuilt binaries and `.o` files are deleted** so `make` rebuilds them, and the bundled toolbox wrappers are removed so the shims apply.
+- **Linux-only prebuilt binaries and `.o` files are deleted** so `make` rebuilds them, and the bundled toolbox wrappers are removed so the shims apply. Each Octave entry's startup file gets added lines that load the shims first.
 
-The sandbox blocks reads of reference labels (`.atr`), archived outputs (`challenge/` folders) and Challenge archives (`.zip`) anywhere on disk, in `setup.sh` as well as `next.sh`. Regression tests check this with fake entries and on the real data layout, with a positive control. An independent review found gaps in earlier versions, now closed. Entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
+The sandbox blocks reads of reference labels (`.atr`), archived outputs (`challenge/` folders) and Challenge archives (`.zip`) anywhere on disk, in `setup.sh` as well as `next.sh`. Regression tests check this with fake entries and on the real data layout, with a positive control. A code review found gaps in earlier versions, now closed. Entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
 
 Those changes could in principle alter results. That's precisely what the comparison with the archive detects, and why it decides what gets reported.
 
@@ -154,7 +154,7 @@ Those changes could in principle alter results. That's precisely what the compar
 
 ### `rapr-25` isn't reproducible here
 
-A binary in this entry segfaults on some runs, so its results vary with no change to code or data. Three full runs (the committed results and two clean clones) gave augmented-set scores of **82.64, 83.94 and 83.37**. The published table uses the first, which is one sample rather than a settled value.
+Results from this entry vary between runs with no change to the entry or its data. A binary in it segfaults on some runs, the likely cause, though that isn't established for every record. Three full runs (the committed results and two clean clones) gave augmented-set scores of **82.64, 83.94 and 83.37**. The published table uses the first, which is one sample rather than a settled value.
 
 | Augmented record | Committed: TP / FP / FN | Clean clone 1 | Clean clone 2 |
 |---|---|---|---|
@@ -165,7 +165,7 @@ A binary in this entry segfaults on some runs, so its results vary with no chang
 | 1858 | 439 / 666 / 344 | 461 / 305 / 322 | 439 / 666 / 344 |
 | 2970 | 904 / 3 / 36 | 905 / 5 / 35 | 904 / 3 / 36 |
 
-Each clone was compared with the committed results across all 8,400 record results. The first differed on 5 and the second on 3, every one from `rapr-25`, and the affected records changed between runs, so other records could vary too. All other entries matched in both clones. **Clone 1 ran from an earlier commit** (`b538a01`); clone 2 ran from `8b42006`. Three runs on one machine aren't a formal determinism study, and `rapr-25` is the only entry shown to vary so far.
+Each clone was compared with the committed results across all 8,400 record results. The first differed on 5 and the second on 3, every one from `rapr-25`, and the affected records changed between runs, so other records could vary too. All other entries matched in both clones. **The runs used different commits:** the committed results `bd14d97`, clone 1 `b538a01`, clone 2 `8b42006`. None of the changes between them touched the entries or the data, and every other entry's results matched. Three runs on one machine aren't a formal determinism study, and `rapr-25` is the only entry shown to vary so far.
 
 ## Roadmap
 
@@ -184,9 +184,9 @@ The agent made real mistakes along the way, including a shim bug that silently c
 
 ## References and credits
 
-All detection methods belong to their authors, listed in each entry's `AUTHORS` file in the PhysioNet archive. The entry IDs in `results/` come from the [published rankings](https://physionet.org/content/challenge-2014/1.0.0/).
+All detection methods belong to their authors, listed in each entry's `AUTHORS` file in the PhysioNet archive. The entry IDs in `results/` come from the [published rankings](https://moody-challenge.physionet.org/2014/).
 
-- [PhysioNet/CinC Challenge 2014](https://moody-challenge.physionet.org/2014/) rules, rankings and data, published under the [Open Data Commons Attribution License v1.0](https://physionet.org/content/challenge-2014/1.0.0/)
+- [PhysioNet/CinC Challenge 2014](https://moody-challenge.physionet.org/2014/) rules, rankings and data, published under the [Open Data Commons Attribution License v1.0](https://moody-challenge.physionet.org/2014/)
 - Silva, Moody, Behar, Johnson, Oster, Clifford, Moody, [Robust detection of heart beats in multimodal data](https://doi.org/10.1088/0967-3334/36/8/1629), Physiological Measurement 2015
 - Johnson, Behar, Andreotti, Clifford, Oster, [Multimodal heart beat detection using signal quality indices](https://doi.org/10.1088/0967-3334/36/8/1665), Physiological Measurement 2015
 - [WFDB Software Package](https://github.com/bemoody/wfdb) 10.7.0, [wfdb-python](https://github.com/MIT-LCP/wfdb-python), [NeuroKit2](https://github.com/neuropsychology/NeuroKit)

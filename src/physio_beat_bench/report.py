@@ -459,7 +459,7 @@ def outcomes_figure(summary: pd.DataFrame, path: Path) -> None:
     ax.set_ylim(-0.85, 0.7)
     ax.axis("off")
     ax.set_title(
-        f"{tiers['total']} heartbeat detectors from 2014, re-run in 2026\n"
+        f"{tiers['total']} heartbeat detectors from 2014–15, re-run in 2026\n"
         "checked beat by beat against their own archived outputs",
         fontsize=13, color=ink, loc="left",
     )  # fmt: skip
