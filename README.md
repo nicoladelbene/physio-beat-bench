@@ -9,7 +9,7 @@
 | **Ran, but differs:** produces output that doesn't match its archive | 12 |
 | **Did not run** | 5 |
 
-**The lesson:** those 12 entries finish without complaint and produce plausible scores, and those scores are not valid measurements of the original methods. Without an archived answer to check against, you would have no way to tell. Failures here mostly show the limits of this revival, not of the original work.
+**The lesson:** 8 of those 12 still score at least 98 on the training set. They look healthy, yet their output isn't what the original produced, so their scores don't measure the original method. Without an archived answer to check against, you would have no way to tell. Failures here mostly show the limits of this revival, not of the original work.
 
 This is research software for benchmarking algorithms. It is not clinically validated and not for patient care.
 
@@ -24,7 +24,7 @@ Scores on the 100-record augmented set, using the Challenge's official scorer (`
 | Pangerc & Jager, entry 420 | ECG + blood pressure | 95.48 (93.56–97.10) | 93.64 |
 | Behar, Johnson et al., entry 425 | ECG + blood pressure | 90.96 (87.77–93.85) | 91.50 |
 | Ding, entry 454 | ECG + blood pressure | 90.12 (87.02–92.92) | 87.66 |
-| De Cooman, entry 420 | See entry | 87.93 (82.73–92.72) | 90.02 |
+| De Cooman, entry 420 | ECG + pulsatile signals | 87.93 (82.73–92.72) | 90.02 |
 | `gqrs` from WFDB (a 2014 entry is exactly this command) | One ECG | 86.41 (82.63–90.13) | 87.38 |
 | NeuroKit2 `elgendi2010` | One ECG | 85.73 (80.87–90.11) | – |
 | WFDB `xqrs` | One ECG | 83.83 (79.22–88.20) | – |

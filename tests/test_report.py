@@ -2,7 +2,12 @@
 
 import pandas as pd
 
-from physio_beat_bench.report import paired_difference, performance_table, reproduction_tiers
+from physio_beat_bench.report import (
+    healthy_looking_mismatches,
+    paired_difference,
+    performance_table,
+    reproduction_tiers,
+)
 
 
 def summary():
@@ -28,6 +33,18 @@ def test_each_entry_falls_in_exactly_one_reproduction_tier():
     assert reproduction_tiers(summary()) == {
         "exact": 1, "near": 0, "partial": 1, "did_not_run": 1, "total": 3,
     }  # fmt: skip
+
+
+def test_mismatches_with_healthy_scores_are_counted():
+    rows = [
+        {"kind": "entry-2014", "reproduced_records": 60, "archived_records": 100,
+         "training_score": 99.5},
+        {"kind": "entry-2014", "reproduced_records": 60, "archived_records": 100,
+         "training_score": 40.0},
+        {"kind": "entry-2014", "reproduced_records": 100, "archived_records": 100,
+         "training_score": 99.5},
+    ]  # fmt: skip
+    assert healthy_looking_mismatches(pd.DataFrame(rows)) == 1
 
 
 def per_record(detector, values):

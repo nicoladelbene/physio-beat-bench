@@ -13,7 +13,9 @@ from .report import (
     add_official_scores,
     comparisons,
     figure,
+    healthy_looking_mismatches,
     official_agreement,
+    outcomes_figure,
     reproduction_tiers,
     summarise,
 )
@@ -51,7 +53,9 @@ def main() -> None:
         combined = pd.concat(frames)
         summary = add_official_scores(summarise(combined), layout.data / "rankings-20150413")
         figure(summary, Path("docs/scores.png"))
+        outcomes_figure(summary, Path("docs/outcomes.png"))
         print(reproduction_tiers(summary))
+        print({"healthy_looking_mismatches": healthy_looking_mismatches(summary)})
         print(official_agreement(summary))
         paired = comparisons(combined)
         paired.to_csv(results / "comparisons.csv", index=False)

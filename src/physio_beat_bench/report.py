@@ -88,6 +88,16 @@ def reproduction_tiers(summary: pd.DataFrame) -> dict[str, int]:
     }
 
 
+HEALTHY_TRAINING_SCORE = 98
+
+
+def healthy_looking_mismatches(summary: pd.DataFrame) -> int:
+    """Entries that differ from their archive yet score well enough to pass as working."""
+    entries = summary[summary["kind"] == "entry-2014"]
+    fraction = entries["reproduced_records"] / entries["archived_records"]
+    return int(((fraction < 0.95) & (entries["training_score"] >= HEALTHY_TRAINING_SCORE)).sum())
+
+
 def add_official_scores(summary: pd.DataFrame, rankings: Path) -> pd.DataFrame:
     """Attach each entry's official hidden-test score from the published 2015 rankings."""
     official = {}
@@ -236,3 +246,42 @@ def official_agreement(summary: pd.DataFrame) -> dict[str, float]:
             mainstream["augmented_score"].corr(mainstream["official_hidden_score"]), 3
         ),
     }
+
+
+def outcomes_figure(summary: pd.DataFrame, path: Path) -> None:
+    """One bar showing how the entries split across reproduction tiers."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    surface, ink, muted = "#fcfcfb", "#0b0b0b", "#52514e"
+    tiers = reproduction_tiers(summary)
+    segments = [
+        (tiers["exact"], "#2a78d6", "Reproduced\nexactly"),
+        (tiers["near"], "#1baf7a", "Nearly"),
+        (tiers["partial"], "#eb6834", "Ran, but\ndid not match"),
+        (tiers["did_not_run"], "#b9b8b2", "Did not\nrun"),
+    ]
+    fig, ax = plt.subplots(figsize=(8, 3.4), dpi=200)
+    fig.patch.set_facecolor(surface)
+    ax.set_facecolor(surface)
+    start = 0
+    for count, color, label in segments:
+        ax.barh(0, count - 0.12, left=start, height=0.5, color=color)
+        centre = start + count / 2
+        ax.text(centre, 0, str(count), ha="center", va="center", fontsize=17, weight="bold",
+                color=ink)  # fmt: skip
+        ax.text(centre, -0.36, label, ha="center", va="top", fontsize=10, color=muted)
+        start += count
+    ax.set_xlim(0, tiers["total"])
+    ax.set_ylim(-0.85, 0.7)
+    ax.axis("off")
+    ax.set_title(
+        f"{tiers['total']} heartbeat detectors from 2014, re-run in 2026\n"
+        "checked beat by beat against their own archived outputs",
+        fontsize=13, color=ink, loc="left",
+    )  # fmt: skip
+    fig.tight_layout()
+    fig.savefig(path, facecolor=surface)
+    plt.close(fig)
