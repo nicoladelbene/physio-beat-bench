@@ -13,7 +13,7 @@ from .scoring import Counts, challenge_score
 def score_counts(frame: pd.DataFrame, columns=("tp", "fp", "fn")) -> float:
     a, b, c = columns
     return challenge_score(
-        Counts(int(x), int(y), int(z)) for x, y, z in zip(frame[a], frame[b], frame[c])
+        Counts(int(x), int(y), int(z)) for x, y, z in zip(frame[a], frame[b], frame[c], strict=True)
     ).score
 
 
@@ -99,6 +99,9 @@ def add_official_scores(summary: pd.DataFrame, rankings: Path) -> pd.DataFrame:
     return summary.assign(official_hidden_score=names.map(official))
 
 
+LOWEST_CHARTED_SCORE = 60
+
+
 def figure(summary: pd.DataFrame, path: Path) -> None:
     """Dot-and-interval chart of the performance table on the augmented set."""
     import matplotlib
@@ -109,7 +112,9 @@ def figure(summary: pd.DataFrame, path: Path) -> None:
     surface, ink, muted, grid = "#fcfcfb", "#0b0b0b", "#52514e", "#e6e5e0"
     entry_color, modern_color = "#2a78d6", "#eb6834"
     table = performance_table(summary).iloc[::-1]
-    table = table[table["augmented_ran"] >= 90]
+    table = table[
+        (table["augmented_ran"] >= 90) & (table["augmented_score"] >= LOWEST_CHARTED_SCORE)
+    ]
     y = np.arange(len(table))
 
     fig, ax = plt.subplots(figsize=(9, 0.34 * len(table) + 2.0), dpi=200)
@@ -132,6 +137,7 @@ def figure(summary: pd.DataFrame, path: Path) -> None:
                   color=muted, fontsize=9)  # fmt: skip
     ax.tick_params(axis="x", colors=muted, labelsize=9, length=0)
     ax.tick_params(axis="y", length=0)
+    ax.set_xlim(LOWEST_CHARTED_SCORE, 100)
     ax.grid(axis="x", color=grid, lw=0.8)
     ax.set_axisbelow(True)
     for side in ("top", "right", "left", "bottom"):
@@ -146,10 +152,87 @@ def figure(summary: pd.DataFrame, path: Path) -> None:
     ]  # fmt: skip
     ax.legend(handles=handles, loc="lower left", bbox_to_anchor=(-0.02, 1.0), frameon=False,
               fontsize=8.5, labelcolor=muted)  # fmt: skip
-    fig.text(0.01, 0.005, "Lines: 95% bootstrap interval over records. Some entries were developed "
-             "with this set available, so their scores here may be optimistic.",
-             color=muted, fontsize=7.5)  # fmt: skip
-    fig.tight_layout(rect=(0, 0.02, 1, 1))
+    fig.text(
+        0.01, 0.005,
+        f"Lines: 95% bootstrap interval over records. Axis starts at {LOWEST_CHARTED_SCORE}; "
+        "lower scorers are in results/summary.csv.\n"
+        "Follow-up entries could have been developed with this set, so their scores may be optimistic.",
+        color=muted, fontsize=7.5,
+    )  # fmt: skip
+    fig.tight_layout(rect=(0, 0.035, 1, 1))
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, facecolor=surface)
     plt.close(fig)
+
+
+def paired_difference(
+    results: pd.DataFrame,
+    first: str,
+    second: str,
+    set_name: str = "augmented",
+    exclude: tuple[str, ...] = (),
+    iterations: int = 5000,
+    seed: int = 2014,
+) -> tuple[float, float, float]:
+    """Score difference (first minus second) with a 95% interval, resampling shared records."""
+
+    def table(name: str) -> pd.DataFrame:
+        rows = results[(results["detector"] == name) & (results["set"] == set_name)]
+        rows = rows.assign(record=rows["record"].astype(str))
+        return rows[~rows["record"].isin(exclude)].set_index("record")
+
+    a, b = table(first), table(second)
+    a = a.loc[a.index.intersection(b.index)]
+    b = b.loc[a.index]
+    rng = np.random.default_rng(seed)
+    differences = [
+        score_counts(a.iloc[picks]) - score_counts(b.iloc[picks])
+        for picks in rng.integers(0, len(a), size=(iterations, len(a)))
+    ]
+    low, high = np.percentile(differences, [2.5, 97.5])
+    return (
+        round(score_counts(a) - score_counts(b), 2),
+        round(float(low), 2),
+        round(float(high), 2),
+    )
+
+
+# Record 42878 has no ECG, so ECG-only detectors are compared on the other 99.
+NO_ECG_RECORDS = ("42878",)
+GQRS_BASELINE = "carlosfernndez186-11"  # this entry's next.sh is exactly `gqrs -r $1 -o qrs`
+COMPARISONS = (
+    ("urska.pangerc-420", "alistairewj-425"),
+    ("alistairewj-425", GQRS_BASELINE),
+    ("alistairewj-425", "neurokit2-elgendi2010"),
+    (GQRS_BASELINE, "neurokit2-elgendi2010"),
+    (GQRS_BASELINE, "wfdb-xqrs"),
+    (GQRS_BASELINE, "neurokit2-neurokit"),
+    ("neurokit2-elgendi2010", "neurokit2-neurokit"),
+)
+
+
+def comparisons(results: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for first, second in COMPARISONS:
+        difference, low, high = paired_difference(results, first, second, exclude=NO_ECG_RECORDS)
+        rows.append(
+            {"first": first, "second": second, "difference": difference, "low": low, "high": high}
+        )
+    return pd.DataFrame(rows)
+
+
+def official_agreement(summary: pd.DataFrame) -> dict[str, float]:
+    """How well exact entries' augmented scores track their official hidden-test scores."""
+    entries = summary[summary["kind"] == "entry-2014"]
+    exact = entries[entries["reproduced_records"] == entries["archived_records"]]
+    mainstream = exact[exact["augmented_score"] >= LOWEST_CHARTED_SCORE]
+    series = (exact["augmented_score"], exact["official_hidden_score"])
+    return {
+        "n": len(exact),
+        "pearson": round(series[0].corr(series[1]), 3),
+        "spearman": round(series[0].corr(series[1], method="spearman"), 3),
+        "n_scoring_above_60": len(mainstream),
+        "pearson_scoring_above_60": round(
+            mainstream["augmented_score"].corr(mainstream["official_hidden_score"]), 3
+        ),
+    }

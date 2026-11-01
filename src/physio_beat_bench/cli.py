@@ -9,7 +9,14 @@ import pandas as pd
 
 from .bench import Layout, run_entries, run_modern
 from .fetch import fetch
-from .report import add_official_scores, figure, reproduction_tiers, summarise
+from .report import (
+    add_official_scores,
+    comparisons,
+    figure,
+    official_agreement,
+    reproduction_tiers,
+    summarise,
+)
 
 
 def main() -> None:
@@ -41,11 +48,14 @@ def main() -> None:
     else:
         names = ("entries.csv", "modern.csv")
         frames = [pd.read_csv(results / name) for name in names if (results / name).exists()]
-        summary = add_official_scores(
-            summarise(pd.concat(frames)), layout.data / "rankings-20150413"
-        )
+        combined = pd.concat(frames)
+        summary = add_official_scores(summarise(combined), layout.data / "rankings-20150413")
         figure(summary, Path("docs/scores.png"))
         print(reproduction_tiers(summary))
+        print(official_agreement(summary))
+        paired = comparisons(combined)
+        paired.to_csv(results / "comparisons.csv", index=False)
+        print(paired.to_string(index=False))
         summary.to_csv(results / "summary.csv", index=False)
         print(summary.to_string(index=False))
 

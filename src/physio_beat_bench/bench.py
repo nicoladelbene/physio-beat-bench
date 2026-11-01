@@ -229,5 +229,5 @@ def run_modern(layout: Layout, out: Path, jobs: int) -> None:
         for record in layout.record_names(set_name)
     ]
     with ProcessPoolExecutor(jobs) as pool:
-        rows = list(pool.map(_modern_record, *zip(*tasks), chunksize=8))
+        rows = list(pool.map(_modern_record, *zip(*tasks, strict=True), chunksize=8))
     write_rows(out, rows)
