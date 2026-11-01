@@ -211,6 +211,8 @@ def paired_difference(
 NO_ECG_RECORDS = ("42878",)
 GQRS_BASELINE = "carlosfernndez186-11"  # this entry's next.sh is exactly `gqrs -r $1 -o qrs`
 COMPARISONS = (
+    ("urska.pangerc-420", "marcus.vollmer-402"),
+    ("marcus.vollmer-402", "alistairewj-425"),
     ("urska.pangerc-420", "alistairewj-425"),
     ("alistairewj-425", GQRS_BASELINE),
     ("alistairewj-425", "neurokit2-elgendi2010"),

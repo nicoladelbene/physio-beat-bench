@@ -105,3 +105,50 @@ def test_hung_entry_is_stopped_and_reported(tmp_path):
 def test_entry_without_output_is_reported_rather_than_skipped(tmp_path):
     entry = make_entry(tmp_path, "exit 0")
     assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].status is RecordStatus.NO_OUTPUT
+
+
+def test_entry_cannot_read_reference_labels_from_the_records_folder(tmp_path):
+    records = make_records(tmp_path, "100")
+    entry = make_entry(tmp_path, f'cat "{records}/$1.atr" > "$1.qrs"')
+    assert run(tmp_path, entry, records)[0].status is RecordStatus.NO_OUTPUT
+
+
+def test_entry_cannot_read_its_pristine_archived_answers(tmp_path):
+    entry = make_entry(tmp_path, "true", archived={"100": b"answer"})
+    (entry / "next.sh").write_text(
+        f'#!/bin/bash\ncat "{entry}/challenge/2014/set-p/$1.qrs" > "$1.qrs"\n'
+    )
+    assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].status is RecordStatus.NO_OUTPUT
+
+
+def test_exit_code_is_recorded(tmp_path):
+    entry = make_entry(tmp_path, 'printf x > "$1.qrs"; exit 3')
+    assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].exit_code == 3
+
+
+def test_temporary_files_stay_inside_the_work_directory(tmp_path):
+    entry = make_entry(tmp_path, 'touch "$TMPDIR/probe" && printf x > "$1.qrs"')
+    assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].status is RecordStatus.OK
+    assert list((tmp_path / "work").rglob("probe"))
+
+
+def test_entry_cannot_read_labels_from_another_record_set(tmp_path):
+    other = tmp_path / "other-set"
+    other.mkdir()
+    (other / "100.atr").write_text("label")
+    entry = make_entry(tmp_path, f'cat "{other}/$1.atr" > "$1.qrs"')
+    assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].status is RecordStatus.NO_OUTPUT
+
+
+def test_entry_cannot_read_another_entrys_archived_outputs(tmp_path):
+    other = tmp_path / "other-entry" / "challenge" / "2014" / "set-p"
+    other.mkdir(parents=True)
+    (other / "100.qrs").write_text("answer")
+    entry = make_entry(tmp_path, f'cat "{other}/$1.qrs" > "$1.qrs"')
+    assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].status is RecordStatus.NO_OUTPUT
+
+
+def test_entry_can_still_read_a_label_file_it_ships_itself(tmp_path):
+    entry = make_entry(tmp_path, 'cat own.atr > "$1.qrs"')
+    (entry / "own.atr").write_text("bundled")
+    assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].status is RecordStatus.OK

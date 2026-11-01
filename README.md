@@ -4,12 +4,12 @@
 
 | Outcome on the 100 training records | Entries |
 |---|---|
-| **Exact:** same beat positions on all 100 records | **16** |
-| **Near:** same on at least 95 records | 2 |
-| **Ran, but differs:** produces output that doesn't match its archive | 12 |
-| **Did not run** | 5 |
+| **Exact:** same beat positions on all 100 records | **17** |
+| **Near:** same on at least 95 records | 3 |
+| **Ran, but differs:** produces output that doesn't match its archive | 11 |
+| **Did not run** | 4 |
 
-**The lesson:** 8 of those 12 still score at least 98 on the training set. They look healthy, yet their output isn't what the original produced, so their scores don't measure the original method. Without an archived answer to check against, you would have no way to tell. Failures here mostly show the limits of this revival, not of the original work.
+**The lesson:** 7 of those 11 still score at least 98 on the training set. They look healthy, yet their output isn't what the original produced, so their scores don't measure the original method. Without an archived answer to check against, you would have no way to tell. Failures here mostly show the limits of this revival, not of the original work.
 
 This is research software for benchmarking algorithms. It is not clinically validated and not for patient care.
 
@@ -17,11 +17,12 @@ This is research software for benchmarking algorithms. It is not clinically vali
 
 ![Challenge scores with 95% intervals for entries that reproduce exactly and for current libraries](docs/scores.png)
 
-Scores on the 100-record augmented set, using the Challenge's official scorer (`bxb -f 0`). Intervals are 95% bootstrap intervals over records. Only entries that reproduce exactly are listed, because a score from any other entry measures our revival rather than the entry.
+Scores on the 100-record augmented set, using the Challenge's official scorer (`bxb -f 0`). Intervals are 95% bootstrap intervals over records. Only the top entries that reproduce exactly are listed here, plus the `gqrs` baseline, because a score from any entry that doesn't reproduce measures our revival rather than the entry.
 
 | Detector | Signals used | Score (95% CI) | Official hidden-test score, 2015 |
 |---|---|---|---|
 | Pangerc & Jager, entry 420 | ECG + blood pressure | 95.48 (93.56–97.10) | 93.64 |
+| Vollmer, entry 402 | ECG + blood pressure | 91.46 (87.98–94.47) | 89.55 |
 | Behar, Johnson et al., entry 425 | ECG + blood pressure | 90.96 (87.77–93.85) | 91.50 |
 | Ding, entry 454 | ECG + blood pressure | 90.12 (87.02–92.92) | 87.66 |
 | De Cooman, entry 420 | ECG + pulsatile signals | 87.93 (82.73–92.72) | 90.02 |
@@ -36,6 +37,8 @@ Full results: [`results/summary.csv`](results/summary.csv).
 
 | Comparison | Difference (95% CI) |
 |---|---|
+| Pangerc & Jager − Vollmer | +4.06 (0.76 to 7.70) |
+| Vollmer − Behar, Johnson et al. | -0.11 (−3.13 to 2.44) |
 | Behar, Johnson et al. − `gqrs` | +4.36 (1.20 to 7.88) |
 | Behar, Johnson et al. − NeuroKit2 `elgendi2010` | +5.05 (1.11 to 9.35) |
 | `gqrs` − WFDB `xqrs` | +2.61 (0.38 to 5.11) |
@@ -47,9 +50,9 @@ Full results: [`results/summary.csv`](results/summary.csv).
 - A library's default isn't its best method. NeuroKit2's `elgendi2010` scores 5.87 (2.21 to 10.61) above its own default here.
 - No current single-channel default tested here beats the plain `gqrs` baseline. These are defaults, not tuned configurations, on a deliberately hard dataset, so this says nothing about clean recordings or about what the libraries can do when configured for this data.
 
-**Does the pipeline measure the right thing?** Across the 16 exact entries, augmented-set scores correlate with the official hidden-test scores: Pearson 0.994, Spearman 0.976. Two very low scorers inflate the Pearson figure; among the 14 scoring above 60, it is 0.944.
+**Does the pipeline measure the right thing?** Across the 17 exact entries, augmented-set scores correlate with the official hidden-test scores: Pearson 0.993, Spearman 0.971. Two very low scorers inflate the Pearson figure; among the 15 scoring above 60, it is 0.940.
 
-**Read the top score with care.** Pangerc's sources are dated February 2015, and the augmented set was released in January 2015, so that entry could have been developed with this set available. Its 93.64 on the hidden set is the more independent number. The hidden test set isn't public, and its 200 records aren't the same as these 100, so the two columns are not directly comparable.
+**Read the top scores with care.** Pangerc's and Vollmer's sources are dated February 2015, and the augmented set was released in January 2015, so both could have been developed with this set available. Their hidden-set scores, 93.64 and 89.55, are the more independent numbers, and on those Behar, Johnson et al. (91.50) rank above Vollmer. The hidden test set isn't public, and its 200 records aren't the same as these 100, so the two columns are not directly comparable.
 
 ## Reproduce it
 
@@ -76,9 +79,9 @@ Records and entries are downloaded from PhysioNet and never redistributed here. 
 PhysioNet archive ─► fetch ─► records + 35 entry archives
                                     │
     setup.sh + next.sh, sandboxed ◄─┤
-    no network, writes only to its  │
-    work folder, no reference       │
-    labels, no archived outputs     │
+    no network, no reference labels,│
+    no archived outputs, writes to  │
+    its work and temp folders only  │
                 │                   │
                 ▼                   ▼
           2026 beats ─► compare with archived beats ─► reproduction tier
@@ -93,23 +96,27 @@ Entries run through their original `setup.sh` and `next.sh`, and **their source 
 - **Small Linux-to-macOS adapters** cover `sed -i`, `tac` and `wfdb2mat`'s report format, and a 2014-era `mean`, `nanmean` and friends that Octave 11 changed or dropped.
 - **Linux-only prebuilt binaries and `.o` files are deleted** so `make` rebuilds them, and the bundled toolbox wrappers are removed so the shims apply.
 
+The sandbox blocks reads of reference labels and archived outputs anywhere on disk, and the tests check this by having fake entries try. Entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
+
 Those changes could in principle alter results. That's precisely what the comparison with the archive detects, and why it decides what gets reported.
 
 ## Limitations
 
-- **One platform, one run.** macOS on Apple Silicon only, with Octave 11 rather than the 2014 version. Run-to-run determinism has not been separately tested. Linux support is next.
+- **One platform.** macOS on Apple Silicon only, with Octave 11 rather than the 2014 version. Linux support is next.
+- **Not every entry is deterministic here.** `rapr-25` crashes intermittently: a binary segfaults on some runs, and record 1565 scored 0 true positives in one run of four and 697 in the others. Between two full runs, 30 of 35 entries gave identical counts on every record. Four of the other five changed because of a setup fix between those runs, and `rapr-25` is the unstable one. This is not a formal determinism study.
+- **Exit codes are recorded but don't decide anything.** Many 2014 scripts exit oddly. `jesus.presedo-15` and `lixuejianwork-15` exit non-zero on all 100 training records yet reproduce exactly. The archive comparison is the test.
 - **Exact reproduction is checked on the training set only**, because that's all entries archived. A pass there doesn't prove identical behaviour on the augmented set.
 - **The augmented set was public while follow-up entries were developed**, so it isn't a clean held-out test for them.
 - **Beat labels are the Challenge's.** They are the reference here, not independently verified.
 - **Library defaults only.** This isn't a tuned comparison, and the libraries are not at fault for lacking a second signal.
 - **Benchmark scores are not clinical performance.** Nothing here supports clinical use or a claim about patient outcomes.
 - **Record 42878 has no ECG.** Under the Challenge rule, ECG-only detectors score zero on it, so they're also compared on the other 99 records above.
-- **`fetch` was not exercised end to end.** PhysioNet returned HTTP 500 during final verification, so the fresh-clone run used an identical local copy of the archive. Everything else ran from a clean clone.
+- **`fetch` was not exercised end to end.** PhysioNet returned HTTP 500 during final verification, so the fresh-clone run used an identical local copy of the archive. The final numbers here came from a rerun in the working copy after fixes from a code review, not from a new clean clone.
 
 ## Roadmap
 
 - Linux and container support, plus a determinism check
-- Bring back more of the 19 entries that didn't reproduce, keeping the archive as the only test of success
+- Bring back more of the 18 entries that didn't reproduce, keeping the archive as the only test of success
 - Tuned library configurations as a separate, clearly labelled comparison
 - A leave-records-out evaluation for any method tuned on this data
 

@@ -1,7 +1,8 @@
 """Run one archived Challenge entry through its setup.sh / next.sh interface.
 
-Three guarantees hold for every run: the entry never sees reference annotations, it cannot read
-its own archived outputs, and it has no network and can write only inside its work directory.
+Enforced by the sandbox for every run: no network; no reads of the records folder (and so the
+reference annotations), the pristine entry or the moved archived outputs; writes only to the work
+directory, the system's per-user temp folder and /dev.
 """
 
 from __future__ import annotations
@@ -20,7 +21,11 @@ from .annotations import same_beats
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPAT = REPO_ROOT / "compat"
 SETUP_TIMEOUT_SECONDS = 300  # the Challenge's own limit for setup.sh
-OCTAVE_PACKAGE_LIST = next(iter(sorted(Path.home().glob(".config/octave/*/octave_packages"))), "")
+OCTAVE_PACKAGE_LIST = max(
+    Path.home().glob(".config/octave/*/octave_packages"),
+    key=lambda path: path.stat().st_mtime,
+    default="",
+)
 
 
 class RecordStatus(StrEnum):
@@ -36,6 +41,7 @@ class RecordResult:
     seconds: float
     output: Path | None
     reproduced: bool | None  # same beats as the archive; None when the archive has no output
+    exit_code: int | None  # None after a timeout. Informational: 2014 entries often exit oddly
 
 
 def wfdb_home() -> Path | None:
@@ -54,6 +60,7 @@ def _environment(work: Path) -> dict[str, str]:
     ]
     env = {
         "HOME": str(work),
+        "TMPDIR": str(work / ".tmp"),
         "WFDB": ".",
         "TERM": "dumb",
         "LC_ALL": "C",
@@ -77,14 +84,16 @@ def _environment(work: Path) -> dict[str, str]:
 
 
 def _run_sandboxed(
-    script: str, args: list[str], work: Path, answers: Path, timeout: float, log: Path
-) -> bool:
-    """Run a script in the sandbox. Returns False if it timed out."""
+    script: str, args: list[str], work: Path, denied: dict[str, Path], timeout: float, log: Path
+) -> int | None:
+    """Run a script in the sandbox. Returns its exit code, or None if it timed out."""
     command = [
         "sandbox-exec", "-f", str(COMPAT / "sandbox.sb"),
-        "-D", f"WORK={work}", "-D", f"ANSWERS={answers}",
+        "-D", f"WORK={work}",
+        *(item for name, path in denied.items() for item in ("-D", f"{name}={path}")),
         "bash", f"./{script}", *args,
     ]  # fmt: skip
+    (work / ".tmp").mkdir(exist_ok=True)
     with log.open("ab") as output:
         process = subprocess.Popen(
             command,
@@ -96,12 +105,11 @@ def _run_sandboxed(
             start_new_session=True,
         )
         try:
-            process.wait(timeout=timeout)
-            return True
+            return process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
-            return False
+            return None
 
 
 def _is_foreign_binary(path: Path) -> bool:
@@ -168,10 +176,20 @@ def run_entry(
     records: list[str],
     work: Path,
     timeout_seconds: float = 180,
+    sources: Path | None = None,
 ) -> list[RecordResult]:
-    """Build an entry once and run it on each record, blind to the reference annotations."""
+    """Build an entry once and run it on each record, blind to the reference annotations.
+
+    `sources` is the folder of entry archives, which also hold archived outputs.
+    """
     entry_work, answers = _prepare(entry, work)
-    _run_sandboxed("setup.sh", [], entry_work, answers, SETUP_TIMEOUT_SECONDS, work / "setup.log")
+    denied = {
+        "ANSWERS": answers,
+        "RECORDS": records_dir.resolve(),
+        "PRISTINE": entry.resolve(),
+        "SOURCES": (sources or entry).resolve(),
+    }
+    _run_sandboxed("setup.sh", [], entry_work, denied, SETUP_TIMEOUT_SECONDS, work / "setup.log")
     _configure_octave(entry_work)
 
     outputs = work / "outputs"
@@ -184,9 +202,10 @@ def run_entry(
                 shutil.copy2(source, entry_work / source.name)
         produced = entry_work / f"{record}.qrs"
         started = time.monotonic()
-        finished = _run_sandboxed(
-            "next.sh", [record], entry_work, answers, timeout_seconds, work / f"next_{record}.log"
+        exit_code = _run_sandboxed(
+            "next.sh", [record], entry_work, denied, timeout_seconds, work / f"next_{record}.log"
         )
+        finished = exit_code is not None
         seconds = time.monotonic() - started
 
         output = None
@@ -200,7 +219,7 @@ def run_entry(
         identical = None
         if archived is not None:
             identical = output is not None and _beats_match(output, archived)
-        results.append(RecordResult(record, status, seconds, output, identical))
+        results.append(RecordResult(record, status, seconds, output, identical, exit_code))
 
         for suffix in ("hea", "dat"):
             (entry_work / f"{record}.{suffix}").unlink(missing_ok=True)

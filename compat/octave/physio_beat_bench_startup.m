@@ -4,8 +4,11 @@ function physio_beat_bench_startup ()
   if (! isempty (real_list))
     pkg ("local_list", real_list);
   endif
-  try
-    pkg ("load", "signal");
-  catch
-  end_try_catch
+  for name = {"signal", "statistics", "image"}
+    try
+      pkg ("load", name{1});
+    catch failure
+      warning ("physio-beat-bench: could not load Octave package %s: %s", name{1}, failure.message);
+    end_try_catch
+  endfor
 endfunction

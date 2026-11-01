@@ -1,7 +1,16 @@
-;; Third-party Challenge entries run with no network and write access only to their work directory.
+;; Third-party Challenge entries: no network; no reads of reference labels, archived outputs or
+;; original archives; writes only to the work directory, the per-user system temp folder and /dev.
 (version 1)
 (allow default)
 (deny network*)
 (deny file-write*)
-(allow file-write* (subpath (param "WORK")) (subpath "/private/var/folders") (subpath "/private/tmp") (subpath "/private/var/tmp") (subpath "/dev"))
-(deny file-read* (subpath (param "ANSWERS")))
+(allow file-write* (subpath (param "WORK")) (subpath "/private/var/folders") (subpath "/dev"))
+;; Patterns also cover other record sets and other entries' folders.
+(deny file-read* (regex #"\.atr$") (regex #"/challenge/"))
+(deny file-read*
+  (subpath (param "ANSWERS"))
+  (subpath (param "RECORDS"))
+  (subpath (param "PRISTINE"))
+  (subpath (param "SOURCES")))
+;; An entry may read what it ships itself, such as its own bundled label files.
+(allow file-read* (subpath (param "WORK")))

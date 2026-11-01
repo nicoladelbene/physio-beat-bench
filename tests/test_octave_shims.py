@@ -73,3 +73,21 @@ def test_ann2rr_returns_intervals_in_samples(record):
 def test_wrann_accepts_a_cell_annotation_type(record):
     octave(record, "wrann('r1', 'qrs', [101; 501], {'N'});")
     assert read_beats(record / "r1.qrs").tolist() == [100, 500]
+
+
+def test_mean_handles_logicals_flags_and_keeps_single_precision(record):
+    out = octave(
+        record,
+        "printf('%g %g %s %g', mean([true false]), mean([1 NaN 3], 2, 'omitnan'), "
+        "class(mean(single([1 2]))), center([1 3])(2));",
+    )
+    assert out.split()[-4:] == ["0.5", "2", "single", "1"]
+
+
+def test_nan_functions_honour_dimension_arguments(record):
+    out = octave(
+        record,
+        "x = [1 3; NaN 5]; printf('%g %g %g', nanstd(x, 0, 2)(2), nanmedian(x, 2)(1), "
+        "nanmean(x, 1)(1));",
+    )
+    assert out.split()[-3:] == ["0", "2", "1"]

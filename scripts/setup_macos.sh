@@ -3,9 +3,9 @@
 set -euo pipefail
 brew install octave gsl boost bash openjdk flac libsndfile curl
 packages=$(octave --quiet --eval "x = pkg('list'); printf('%s ', cellfun(@(p) p.name, x, 'UniformOutput', false){:})")
-case " $packages " in *" signal "*) ;; *)
-  octave --quiet --eval "pkg install -forge control; pkg install -forge signal" ;;
-esac
+for package in control signal datatypes statistics image; do  # datatypes is required by statistics
+  case " $packages " in *" $package "*) ;; *) octave --quiet --eval "pkg install -forge $package" ;; esac
+done
 mkdir -p data/tools
 tools=$(cd data/tools && pwd)
 if [ ! -x "$tools/wfdb/bin/bxb" ]; then

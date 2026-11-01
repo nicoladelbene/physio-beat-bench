@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import re
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import time
@@ -23,7 +24,7 @@ from .scoring import Counts, bxb_counts
 
 SETS = ("training", "augmented")
 FIELDS = [
-    "detector", "kind", "set", "record", "status", "seconds", "reproduced",
+    "detector", "kind", "set", "record", "status", "exit_code", "seconds", "reproduced",
     "tp", "fp", "fn", "archived_tp", "archived_fp", "archived_fn",
 ]  # fmt: skip
 
@@ -49,13 +50,17 @@ def extract_entry(archive: Path, destination: Path) -> Path:
     """Unpack one entry archive into its own directory; path traversal is rejected."""
     if destination.exists():
         return destination
-    destination.mkdir(parents=True)
+    partial = destination.with_name(f"{destination.name}.partial")
+    if partial.exists():
+        shutil.rmtree(partial)
+    partial.mkdir(parents=True)
     if archive.suffix == ".zip":
         with zipfile.ZipFile(archive) as handle:
-            handle.extractall(destination)
+            handle.extractall(partial)
     else:
         with tarfile.open(archive) as handle:
-            handle.extractall(destination, filter="data")
+            handle.extractall(partial, filter="data")
+    partial.rename(destination)
     return destination
 
 
@@ -77,22 +82,30 @@ def _reference_size(layout: Layout, set_name: str, record: str) -> int:
 
 
 def score_output(output: Path | None, layout: Layout, set_name: str, record: str) -> Counts:
-    """Score one output. A missing or malformed output scores zero, as in the Challenge."""
+    """Score one output. Missing or malformed output scores zero, as in the Challenge.
+
+    Only bxb rejecting the file counts as malformed. A missing scorer raises, so that a broken
+    environment can't pass for detectors scoring zero.
+    """
     if output is not None:
         try:
             return bxb_counts(layout.records(set_name) / record, output)
-        except Exception:  # noqa: BLE001 - entries can write anything; bxb's rejection is the signal
+        except (subprocess.CalledProcessError, ValueError, IndexError):
             pass
     return Counts(tp=0, fp=1, fn=_reference_size(layout, set_name, record))
 
 
-def _row(detector, kind, set_name, record, status, seconds, reproduced, counts, archived=None):
+def _row(
+    detector, kind, set_name, record, status, seconds, reproduced, counts, archived=None,
+    exit_code=None,
+):  # fmt: skip
     return {
         "detector": detector,
         "kind": kind,
         "set": set_name,
         "record": record,
         "status": status,
+        "exit_code": "" if exit_code is None else exit_code,
         "seconds": round(seconds, 2),
         "reproduced": "" if reproduced is None else int(reproduced),
         "tp": counts.tp,
@@ -111,7 +124,12 @@ def run_one_entry(archive: Path, layout: Layout, work: Path, timeout: float) -> 
     for set_name in SETS:
         records = layout.record_names(set_name)
         results: list[RecordResult] = run_entry(
-            entry, layout.records(set_name), records, work / "runs" / name / set_name, timeout
+            entry,
+            layout.records(set_name),
+            records,
+            work / "runs" / name / set_name,
+            timeout,
+            sources=layout.sources,
         )
         archive_dir = work / "runs" / name / set_name / "archived/challenge/2014/set-p"
         for result in results:
@@ -126,6 +144,7 @@ def run_one_entry(archive: Path, layout: Layout, work: Path, timeout: float) -> 
                     name, "entry-2014", set_name, result.record, result.status.value,
                     result.seconds, result.reproduced,
                     score_output(result.output, layout, set_name, result.record), archived,
+                    result.exit_code,
                 )
             )  # fmt: skip
         shutil.rmtree(work / "runs" / name / set_name / "entry", ignore_errors=True)
@@ -146,15 +165,16 @@ def run_entries(
 ) -> None:
     archives = [a for a in discover_entries(layout) if not only or entry_name(a) in only]
     rows: list[dict] = []
-    if only and out.exists():  # a partial re-run keeps every other entry's results
+    if only and out.exists():  # a partial re-run replaces only entries that finish
         with out.open(newline="") as handle:
-            rows = [row for row in csv.DictReader(handle) if row["detector"] not in only]
+            rows = list(csv.DictReader(handle))
     with ProcessPoolExecutor(jobs) as pool:
         futures = {pool.submit(run_one_entry, a, layout, work, timeout): a for a in archives}
         for future in as_completed(futures):
             name = entry_name(futures[future])
             try:
-                rows.extend(future.result())
+                fresh = future.result()
+                rows = [row for row in rows if row["detector"] != name] + fresh
                 write_rows(out, rows)
                 print(f"done {name}", flush=True)
             except Exception as error:  # one broken entry must not stop the rest
@@ -195,24 +215,34 @@ def _modern_record(detector: str, layout: Layout, set_name: str, record: str) ->
     base = layout.records(set_name) / record
     fs = float(wfdb.rdheader(str(base)).fs)
     started = time.monotonic()
-    status = "ok"
+    signal = wfdb.rdrecord(str(base))
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            signal = wfdb.rdrecord(str(base))
             detections = detect_modern(
                 detector, first_ecg_channel(signal.sig_name, signal.p_signal), fs
             )
-        beats = np.unique(np.asarray(detections, dtype=int))
-        beats = beats[(beats > 0) & (beats < signal.sig_len)]
-        with tempfile.TemporaryDirectory() as folder:
-            wfdb.wrann(record, "qrs", beats, symbol=["N"] * len(beats), fs=fs, write_dir=folder)
-            counts = bxb_counts(base, Path(folder) / f"{record}.qrs")
+    except ImportError:  # a missing library is a broken setup, not a detector failure
+        raise
     except Exception:  # noqa: BLE001 - a crashing detector scores zero on that record
-        status = "crash"
         counts = Counts(tp=0, fp=1, fn=_reference_size(layout, set_name, record))
-    return _row(detector, "modern", set_name, record, status, time.monotonic() - started, None,
-                counts)  # fmt: skip
+        return _row(
+            detector, "modern", set_name, record, "crash", time.monotonic() - started, None, counts
+        )
+    beats = np.unique(np.asarray(detections, dtype=int))
+    beats = beats[(beats > 0) & (beats < signal.sig_len)]
+    if beats.size == 0:  # no annotation file can be written; scored as a failed record
+        counts = Counts(tp=0, fp=1, fn=_reference_size(layout, set_name, record))
+        return _row(
+            detector, "modern", set_name, record, "no_output", time.monotonic() - started, None,
+            counts,
+        )  # fmt: skip
+    with tempfile.TemporaryDirectory() as folder:
+        wfdb.wrann(record, "qrs", beats, symbol=["N"] * len(beats), fs=fs, write_dir=folder)
+        counts = bxb_counts(base, Path(folder) / f"{record}.qrs")
+    return _row(
+        detector, "modern", set_name, record, "ok", time.monotonic() - started, None, counts
+    )
 
 
 MODERN = (
