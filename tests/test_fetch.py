@@ -3,7 +3,9 @@
 import io
 import zipfile
 
-from physio_beat_bench.fetch import assemble
+import pytest
+
+from physio_beat_bench.fetch import assemble, fetch
 
 
 def build_archive(path):
@@ -38,3 +40,35 @@ def test_sample_entry_outputs_do_not_enter_the_record_folders(tmp_path):
     build_archive(archive)
     data = assemble(archive, tmp_path / "data")
     assert not (data / "training/100.qrs").exists()
+
+
+def test_local_archive_is_unpacked_without_downloading(tmp_path, monkeypatch):
+    archive = tmp_path / "local.zip"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("root/sources/a-1.zip", b"entry")
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("must not touch the network")
+
+    monkeypatch.setattr("urllib.request.urlopen", no_network)
+    report = fetch(tmp_path / "data", archive=archive)
+    assert (tmp_path / "data" / "sources" / "a-1.zip").read_bytes() == b"entry"
+    assert report["verified_against_known_checksum"] is False
+
+
+def test_missing_local_archive_is_an_error(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        fetch(tmp_path / "data", archive=tmp_path / "nope.zip")
+
+
+def test_checksum_of_the_archive_used_for_published_results_is_recognised(tmp_path, monkeypatch):
+    archive = tmp_path / "local.zip"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("root/sources/a-1.zip", b"entry")
+    import hashlib
+
+    monkeypatch.setattr(
+        "physio_beat_bench.fetch.PUBLISHED_RESULTS_SHA256",
+        hashlib.sha256(archive.read_bytes()).hexdigest(),
+    )
+    assert fetch(tmp_path / "data", archive=archive)["verified_against_known_checksum"] is True

@@ -2,16 +2,22 @@
 
 **Can 12-year-old heartbeat detectors still reproduce their own results?** This repo re-runs all 35 entries with sources in the [PhysioNet/CinC Challenge 2014](https://physionet.org/content/challenge-2014/1.0.0/) archive on a 2026 Mac, and checks each one against the outputs it archived in 2014–15.
 
-| Outcome on the 100 training records | Entries |
-|---|---|
-| **Exact:** same beat positions on all 100 records | **17** |
-| **Near:** same on at least 95 records | 3 |
-| **Ran, but differs:** produces output that doesn't match its archive | 11 |
-| **Did not run** | 4 |
+> **The remote download is unverified.** PhysioNet's servers returned HTTP 500 for this archive during every final check, so `physio-beat-bench fetch` has not been tested end to end. The published results and the clean-clone run used a local copy of the archive; see [Reproduce it](#reproduce-it).
+
+| Outcome on the 100 training records | Meaning | Entries |
+|---|---|---|
+| **Exact** | Same beat positions as its archive on all 100 records | **17** |
+| **Near** | Same on at least 95 records, but not all | 3 |
+| **Ran, but differs** | Produced output on at least one record, and matches on fewer than 95 | 11 |
+| **Did not run** | Produced no output on any record | 4 |
+
+One of the 11 that differ, `hoog.antink-407`, produced output on only 25 records, so it's partly an execution failure. Every entry is listed in [`results/reproduction.csv`](results/reproduction.csv).
+
+![Each of the 35 entries against the 100 training records: same beats as its archive, different beats, or no output](docs/reproduction_map.png)
 
 **The lesson:** 7 of those 11 still score at least 98 on the training set. They look healthy, yet their output isn't what the original produced, so their scores don't measure the original method. Without an archived answer to check against, you would have no way to tell. Failures here mostly show the limits of this revival, not of the original work.
 
-This is research software for benchmarking algorithms. It is not clinically validated and not for patient care.
+This is research software for benchmarking algorithms. It is not clinically validated, doesn't establish clinical performance, and is not for patient care. It's a personal project, not affiliated with, sponsored by or endorsed by any employer.
 
 ## What the scores show
 
@@ -39,7 +45,7 @@ Full results: [`results/summary.csv`](results/summary.csv).
 
 1. **No shared untouched test set.** The Challenge's hidden set isn't public. The five top entries above have sources dated February–April 2015, after the augmented set's January 2015 release, so they could have been tuned on it. The library defaults couldn't have been. Comparisons between them on this set may favour the entries.
 2. **Not like for like.** The multimodal entries use blood pressure as well. The libraries were given one ECG channel, and only their defaults were tested.
-3. **The comparisons were chosen after seeing the scores.** Every interval below is exploratory, including the adjusted ones, which account only for the nine listed and not for the informal choosing among 42 detectors.
+3. **The comparisons were chosen after seeing the scores, on reused data.** The same records were used to look, to choose what to compare, and to report. Every interval below is exploratory, including the adjusted ones, which account only for the nine listed and not for the informal choosing among 42 detectors.
 
 **Paired differences**, on the 99 records that have an ECG (first minus second, [`results/comparisons.csv`](results/comparisons.csv)). Adjusted intervals are Bonferroni over these nine.
 
@@ -76,14 +82,34 @@ cd physio-beat-bench
 uv sync --extra modern --group dev
 ./scripts/setup_macos.sh                         # native tools; builds WFDB 10.7.0
 export WFDB_HOME="$PWD/data/tools/wfdb"
-uv run physio-beat-bench fetch                   # ~600 MB from PhysioNet
+```
+
+Then get the data, one of two ways:
+
+```bash
+# A. Download. UNVERIFIED end to end: PhysioNet was returning HTTP 500.
+uv run physio-beat-bench fetch                   # ~530 MB
+
+# B. Use a copy of the archive you already have. No network needed. This route is verified.
+uv run physio-beat-bench fetch --archive /path/to/challenge-2014.zip
+```
+
+Either way, `fetch` prints the archive's SHA-256 and says whether it matches the one behind these results:
+
+`d96fa8fd74a04d3935b1bd8b186c88afc0a4074b29dad9d2b1ba30b68ecab352`
+
+That checksum is of the copy used here. It hasn't been compared with PhysioNet's own checksum list, because the file server was failing. If you get a different archive, your results may differ.
+
+Then run everything:
+
+```bash
 uv run pytest -q
 uv run physio-beat-bench modern
 uv run physio-beat-bench entries
 uv run physio-beat-bench report
 ```
 
-PhysioNet has reported slow performance during an infrastructure migration, so `fetch` may fail for a while with an HTTP error; rerun it later. Records and entries are downloaded from PhysioNet and never redistributed here. This repo holds only original code and per-record counts.
+PhysioNet has reported slow performance during an infrastructure migration, so route A may fail for a while. Records and entries are never redistributed here. This repo holds only original code and per-record counts.
 
 ## How it works
 
@@ -108,7 +134,7 @@ Entries run through their original `setup.sh` and `next.sh`, and **their source 
 - **Small Linux-to-macOS adapters** cover `sed -i`, `tac` and `wfdb2mat`'s report format, and a 2014-era `mean`, `nanmean` and friends that Octave 11 changed or dropped.
 - **Linux-only prebuilt binaries and `.o` files are deleted** so `make` rebuilds them, and the bundled toolbox wrappers are removed so the shims apply.
 
-The sandbox blocks reads of reference labels and archived outputs anywhere on disk, and the tests check this by having fake entries try. Entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
+The sandbox blocks reads of reference labels (`.atr`), archived outputs (`challenge/` folders) and Challenge archives (`.zip`) anywhere on disk, in `setup.sh` as well as `next.sh`. Regression tests check this with fake entries and on the real data layout, with a positive control. An independent review found gaps in earlier versions, now closed. Entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
 
 Those changes could in principle alter results. That's precisely what the comparison with the archive detects, and why it decides what gets reported.
 
@@ -135,15 +161,19 @@ Those changes could in principle alter results. That's precisely what the compar
 
 ## How this was built
 
-Designed and reviewed by Nicola Del Bene, and written with substantial help from an AI coding agent (Claude Code), with commits marked accordingly. The agent made real mistakes along the way, including a shim bug that silently corrupted every Octave entry's output. The archive comparison and round-trip tests are what exposed it, which is the reason this project relies on checks rather than on who or what wrote the code.
+**Nicola Del Bene** chose the research question and set the project's direction, drawing on a background in biomedical engineering, and reviewed the results and what they claim.
+
+**Claude Code**, an AI coding agent, substantially assisted with implementation, testing and documentation, and commits are marked accordingly. Most of the code here wasn't written by hand.
+
+The agent made real mistakes along the way, including a shim bug that silently corrupted every Octave entry's output. The archive comparison and round-trip tests are what exposed it. A code review also found that the sandbox didn't block everything this README claimed, which led to the isolation tests. This is why the project relies on checks rather than on who or what wrote the code.
 
 ## References and credits
 
 All detection methods belong to their authors, listed in each entry's `AUTHORS` file in the PhysioNet archive. The entry IDs in `results/` come from the [published rankings](https://physionet.org/content/challenge-2014/1.0.0/).
 
 - [PhysioNet/CinC Challenge 2014](https://moody-challenge.physionet.org/2014/) rules, rankings and data, published under the [Open Data Commons Attribution License v1.0](https://physionet.org/content/challenge-2014/1.0.0/)
-- Moody et al., [Robust detection of heart beats in multimodal data](https://lcp.mit.edu/pdf/MoodyCinC2014.pdf), Computing in Cardiology 2014
-- Johnson, Behar, Andreotti, Clifford, Oster, [Multimodal heart beat detection using signal quality indices](https://integ04-cnspfv.archimed.fr/doc/OAI_1/oai-HAL-hal-01730819v1), Physiological Measurement 2015
+- Silva, Moody, Behar, Johnson, Oster, Clifford, Moody, [Robust detection of heart beats in multimodal data](https://doi.org/10.1088/0967-3334/36/8/1629), Physiological Measurement 2015
+- Johnson, Behar, Andreotti, Clifford, Oster, [Multimodal heart beat detection using signal quality indices](https://doi.org/10.1088/0967-3334/36/8/1665), Physiological Measurement 2015
 - [WFDB Software Package](https://github.com/bemoody/wfdb) 10.7.0, [wfdb-python](https://github.com/MIT-LCP/wfdb-python), [NeuroKit2](https://github.com/neuropsychology/NeuroKit)
 
 Code in this repo: [MIT](LICENSE). Challenge entries keep their authors' own terms and aren't included here. The per-record counts in `results/` are derived from the Challenge data, under its Open Data Commons Attribution License.

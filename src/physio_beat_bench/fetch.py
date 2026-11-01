@@ -6,6 +6,7 @@ the Open Data Commons Attribution License: https://physionet.org/content/challen
 
 from __future__ import annotations
 
+import hashlib
 import io
 import shutil
 import urllib.request
@@ -14,6 +15,9 @@ from pathlib import Path
 
 ARCHIVE_URL = "https://physionet.org/content/challenge-2014/get-zip/1.0.0/"
 RECORD_SUFFIXES = (".hea", ".dat", ".atr")
+# The archive behind the published results. Not independently checked against PhysioNet's own
+# checksum list, because PhysioNet's file server was failing when this was recorded.
+PUBLISHED_RESULTS_SHA256 = "d96fa8fd74a04d3935b1bd8b186c88afc0a4074b29dad9d2b1ba30b68ecab352"
 
 
 def _copy_records(nested: bytes, folder_marker: str, destination: Path) -> None:
@@ -58,5 +62,26 @@ def download(url: str, destination: Path) -> Path:
     return destination
 
 
-def fetch(data: Path, url: str = ARCHIVE_URL) -> Path:
-    return assemble(download(url, data / "challenge-2014.zip"), data)
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(2**20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def fetch(data: Path, url: str = ARCHIVE_URL, archive: Path | None = None) -> dict:
+    """Unpack the archive, downloading it unless a local copy is given."""
+    if archive is None:
+        source = download(url, data / "challenge-2014.zip")
+    elif not archive.is_file():
+        raise FileNotFoundError(archive)
+    else:
+        source = archive
+    assemble(source, data)
+    checksum = _sha256(source)
+    return {
+        "archive": str(source),
+        "sha256": checksum,
+        "verified_against_known_checksum": checksum == PUBLISHED_RESULTS_SHA256,
+    }

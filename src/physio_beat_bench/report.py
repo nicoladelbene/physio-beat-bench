@@ -88,6 +88,95 @@ def reproduction_tiers(summary: pd.DataFrame) -> dict[str, int]:
     }
 
 
+def reproduction_table(summary: pd.DataFrame) -> pd.DataFrame:
+    """One row per entry: its tier, and whether it produced output on all training records."""
+    entries = summary[summary["kind"] == "entry-2014"].copy()
+    fraction = entries["reproduced_records"] / entries["archived_records"]
+    tier = pd.Series("differs", index=entries.index)
+    tier[fraction >= 0.95] = "near"
+    tier[fraction == 1] = "exact"
+    tier[entries["training_ran"] == 0] = "did_not_run"
+    table = entries.assign(
+        tier=tier,
+        output_on_some_records_only=(entries["training_ran"] > 0)
+        & (entries["training_ran"] < entries["archived_records"]),
+    )
+    order = {"exact": 0, "near": 1, "differs": 2, "did_not_run": 3}
+    columns = ["detector", "tier", "reproduced_records", "archived_records", "training_ran"]
+    return (
+        table.assign(_order=table["tier"].map(order))
+        .sort_values(["_order", "reproduced_records", "detector"], ascending=[True, False, True])[
+            [*columns, "output_on_some_records_only"]
+        ]
+        .reset_index(drop=True)
+    )
+
+
+def reproduction_map(results: pd.DataFrame, summary: pd.DataFrame, path: Path) -> None:
+    """Every entry against every training record: matches its archive, differs, or no output."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap
+    from matplotlib.patches import Patch
+
+    surface, ink, muted = "#fcfcfb", "#0b0b0b", "#52514e"
+    colours = ["#2a78d6", "#eb6834", "#b7b6b1"]
+    table = reproduction_table(summary)
+    training = results[results["set"] == "training"].assign(
+        record=lambda f: f["record"].astype(str)
+    )
+    records = sorted(training["record"].unique())
+    grid = np.full((len(table), len(records)), 2)
+    position = {record: i for i, record in enumerate(records)}
+    for row, name in enumerate(table["detector"]):
+        for item in training[training["detector"] == name].itertuples():
+            if item.status == "ok":
+                grid[row, position[item.record]] = 0 if float(item.reproduced) == 1 else 1
+    # Within each entry, show matches first, so the amount reads as a bar instead of noise.
+    grid = np.sort(grid, axis=1)
+    figure_, axes = plt.subplots(figsize=(10, 9.4), facecolor=surface)
+    axes.imshow(grid, cmap=ListedColormap(colours), vmin=0, vmax=2, aspect="auto",
+                interpolation="nearest")  # fmt: skip
+    axes.set_yticks(range(len(table)), [name.rsplit("-", 1)[0] for name in table["detector"]],
+                    fontsize=8.5, color=ink)  # fmt: skip
+    axes.set_xticks([0, 24.5, 49.5, 74.5, 99.5], ["0", "25", "50", "75", "100"], fontsize=9,
+                    color=muted)  # fmt: skip
+    axes.set_xlabel("Training records, sorted within each entry", color=muted, fontsize=10)
+    axes.tick_params(length=0)
+    for side in axes.spines.values():
+        side.set_visible(False)
+    axes.set_yticks(np.arange(-0.5, len(table)), minor=True)
+    axes.grid(which="minor", axis="y", color=surface, linewidth=1.6)
+    axes.tick_params(which="minor", length=0)
+    axes.set_facecolor(surface)
+    figure_.suptitle("35 heartbeat detectors from 2014–15, re-run in 2026", x=0.02, y=0.985,
+                     ha="left", fontsize=15, color=ink)  # fmt: skip
+    figure_.text(
+        0.02, 0.937, "Each row is one entry. Does its output today match what it archived?",
+        fontsize=10.5, color=muted,
+    )  # fmt: skip
+    figure_.text(
+        0.02, 0.012,
+        "Labels are public submitter IDs. A mismatch or failure shows the limits of this revival, "
+        "not of the original work.",
+        fontsize=8.5, color=muted,
+    )  # fmt: skip
+    figure_.legend(
+        handles=[
+            Patch(color=colours[0], label="Same beats as its archive"),
+            Patch(color=colours[1], label="Ran, but different beats"),
+            Patch(color=colours[2], label="No output"),
+        ],
+        loc="upper left", bbox_to_anchor=(0.012, 0.93), ncol=3, frameon=False, fontsize=10,
+        labelcolor=ink,
+    )  # fmt: skip
+    figure_.tight_layout(rect=(0, 0.025, 1, 0.905))
+    figure_.savefig(path, dpi=160, facecolor=surface)
+    plt.close(figure_)
+
+
 HEALTHY_TRAINING_SCORE = 98
 
 

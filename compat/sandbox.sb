@@ -5,8 +5,8 @@
 (deny network*)
 (deny file-write*)
 (allow file-write* (subpath (param "WORK")) (subpath "/private/var/folders") (subpath "/dev"))
-;; Patterns also cover other record sets and other entries' folders.
-(deny file-read* (regex #"\.atr$") (regex #"/challenge/"))
+;; Patterns also cover other record sets, other entries' folders and the Challenge archives.
+(deny file-read* (regex #"\.atr$") (regex #"/challenge/") (regex #"\.zip$"))
 (deny file-read*
   (subpath (param "ANSWERS"))
   (subpath (param "RECORDS"))

@@ -152,3 +152,39 @@ def test_entry_can_still_read_a_label_file_it_ships_itself(tmp_path):
     entry = make_entry(tmp_path, 'cat own.atr > "$1.qrs"')
     (entry / "own.atr").write_text("bundled")
     assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].status is RecordStatus.OK
+
+
+def test_entry_cannot_read_a_challenge_archive_anywhere(tmp_path):
+    archive = tmp_path / "elsewhere" / "challenge-2014.zip"
+    archive.parent.mkdir()
+    archive.write_text("labels and archived outputs")
+    entry = make_entry(tmp_path, f'cat "{archive}" > "$1.qrs"')
+    assert run(tmp_path, entry, make_records(tmp_path, "100"))[0].status is RecordStatus.NO_OUTPUT
+
+
+def test_setup_script_is_isolated_too(tmp_path):
+    records = make_records(tmp_path, "100")
+    entry = make_entry(
+        tmp_path, 'cat stolen > "$1.qrs"', setup_body=f'cat "{records}/100.atr" > stolen'
+    )
+    assert run(tmp_path, entry, records)[0].status is RecordStatus.NO_OUTPUT
+
+
+def test_symlink_inside_the_work_folder_does_not_reach_labels(tmp_path):
+    records = make_records(tmp_path, "100")
+    entry = make_entry(tmp_path, f'ln -s "{records}/$1.atr" link; cat link > "$1.qrs"')
+    assert run(tmp_path, entry, records)[0].status is RecordStatus.NO_OUTPUT
+
+
+def test_reference_labels_are_never_copied_in_for_the_entry(tmp_path):
+    entry = make_entry(tmp_path, 'ls > "$1.qrs"')
+    run(tmp_path, entry, make_records(tmp_path, "100"))
+    assert not list((tmp_path / "work").rglob("100.atr"))
+    listing = (tmp_path / "work" / "outputs" / "100.qrs").read_text()
+    assert "100.hea" in listing and "100.atr" not in listing
+
+
+def test_archived_outputs_stay_available_to_the_comparison_after_the_run(tmp_path):
+    entry = make_entry(tmp_path, 'printf x > "$1.qrs"', archived={"100": beats(10, 20)})
+    result = run(tmp_path, entry, make_records(tmp_path, "100"))[0]
+    assert result.reproduced is False

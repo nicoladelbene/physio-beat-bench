@@ -8,6 +8,7 @@ from physio_beat_bench.report import (
     held_out_selection,
     paired_difference,
     performance_table,
+    reproduction_table,
     reproduction_tiers,
 )
 
@@ -122,3 +123,68 @@ def test_adjusted_interval_is_wider_and_contains_the_plain_one():
     _, low, high = paired_difference(frame, "a", "b")
     _, adjusted_low, adjusted_high = paired_difference(frame, "a", "b", confidence=1 - 0.05 / 9)
     assert adjusted_low <= low and adjusted_high >= high
+
+
+def test_reproduction_table_separates_tiers_and_partial_execution():
+    table = reproduction_table(
+        pd.DataFrame(
+            [
+                {
+                    "detector": "exact",
+                    "kind": "entry-2014",
+                    "reproduced_records": 100,
+                    "archived_records": 100,
+                    "training_ran": 100,
+                    "augmented_score": 90.0,
+                },
+                {
+                    "detector": "near",
+                    "kind": "entry-2014",
+                    "reproduced_records": 97,
+                    "archived_records": 100,
+                    "training_ran": 100,
+                    "augmented_score": 90.0,
+                },
+                {
+                    "detector": "differs",
+                    "kind": "entry-2014",
+                    "reproduced_records": 20,
+                    "archived_records": 100,
+                    "training_ran": 100,
+                    "augmented_score": 90.0,
+                },
+                {
+                    "detector": "patchy",
+                    "kind": "entry-2014",
+                    "reproduced_records": 20,
+                    "archived_records": 100,
+                    "training_ran": 30,
+                    "augmented_score": 40.0,
+                },
+                {
+                    "detector": "failed",
+                    "kind": "entry-2014",
+                    "reproduced_records": 0,
+                    "archived_records": 100,
+                    "training_ran": 0,
+                    "augmented_score": 0.0,
+                },
+                {
+                    "detector": "library",
+                    "kind": "modern",
+                    "reproduced_records": None,
+                    "archived_records": None,
+                    "training_ran": 100,
+                    "augmented_score": 80.0,
+                },
+            ]
+        )
+    ).set_index("detector")
+    assert table.loc["exact", "tier"] == "exact"
+    assert table.loc["near", "tier"] == "near"
+    assert table.loc["differs", "tier"] == "differs"
+    assert table.loc["patchy", "tier"] == "differs"
+    assert bool(table.loc["patchy", "output_on_some_records_only"]) is True
+    assert bool(table.loc["differs", "output_on_some_records_only"]) is False
+    assert table.loc["failed", "tier"] == "did_not_run"
+    assert "library" not in table.index

@@ -17,6 +17,8 @@ from .report import (
     method_selection,
     official_agreement,
     outcomes_figure,
+    reproduction_map,
+    reproduction_table,
     reproduction_tiers,
     summarise,
 )
@@ -28,7 +30,12 @@ def main() -> None:
     parser.add_argument("--work", type=Path, default=Path("work"))
     parser.add_argument("--results", type=Path, default=Path("results"))
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("fetch", help="download the published Challenge archive")
+    fetcher = commands.add_parser(
+        "fetch", help="download the published Challenge archive, or unpack a local copy"
+    )
+    fetcher.add_argument(
+        "--archive", type=Path, help="use this local copy of the archive; no download"
+    )
     entries = commands.add_parser("entries", help="build and run archived Challenge entries")
     entries.add_argument("--jobs", type=int, default=8)
     entries.add_argument("--timeout", type=float, default=120)
@@ -41,7 +48,12 @@ def main() -> None:
     layout = Layout(args.data.resolve())
     results = args.results.resolve()
     if args.command == "fetch":
-        fetch(args.data.resolve())
+        report = fetch(args.data.resolve(), archive=args.archive)
+        print(f"Archive: {report['archive']}\nSHA-256: {report['sha256']}")
+        if report["verified_against_known_checksum"]:
+            print("Matches the archive behind the published results.")
+        else:
+            print("WARNING: differs from the archive behind the published results.")
     elif args.command == "entries":
         run_entries(
             layout, args.work.resolve(), results / "entries.csv", args.jobs, args.timeout, args.only
@@ -62,6 +74,8 @@ def main() -> None:
         paired.to_csv(results / "comparisons.csv", index=False)
         print(paired.to_string(index=False))
         summary.to_csv(results / "summary.csv", index=False)
+        reproduction_table(summary).to_csv(results / "reproduction.csv", index=False)
+        reproduction_map(combined, summary, Path("docs/reproduction_map.png"))
         selection = method_selection(combined, summary)
         selection.to_csv(results / "selection.csv", index=False)
         print(selection.to_string(index=False))
