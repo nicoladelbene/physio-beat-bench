@@ -1,0 +1,7 @@
+#!/bin/bash
+# GNU `sed -i EXPR FILE` needs an explicit empty suffix on BSD sed.
+args=()
+for a in "$@"; do
+  if [ "$a" = "-i" ]; then args+=(-i ''); else args+=("$a"); fi
+done
+exec /usr/bin/sed "${args[@]}"

@@ -1,0 +1,7 @@
+;; Third-party Challenge entries run with no network and write access only to their work directory.
+(version 1)
+(allow default)
+(deny network*)
+(deny file-write*)
+(allow file-write* (subpath (param "WORK")) (subpath "/private/var/folders") (subpath "/private/tmp") (subpath "/private/var/tmp") (subpath "/dev"))
+(deny file-read* (subpath (param "ANSWERS")))

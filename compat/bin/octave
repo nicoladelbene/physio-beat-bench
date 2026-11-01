@@ -1,0 +1,8 @@
+#!/bin/bash
+# The 2014 template calls NAME('REC',0) on one-argument functions, which old Octave tolerated and
+# modern Octave rejects. Route the call through a shim; entry source is untouched.
+args=()
+for a in "$@"; do
+  args+=("$(printf '%s' "$a" | /usr/bin/perl -pe "s/\b(\w+)\('([^']+)',\s*0\)/physio_beat_bench_call('\$1','\$2',0)/")")
+done
+exec /opt/homebrew/bin/octave --no-gui --no-window-system "${args[@]}"

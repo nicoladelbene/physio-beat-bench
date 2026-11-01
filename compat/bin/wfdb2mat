@@ -1,0 +1,4 @@
+#!/bin/bash
+# WFDB 10.7 prints one more trailing line than 10.5, and entries parse the report by line offset.
+output=$("$WFDB_HOME/bin/wfdb2mat" "$@") || exit $?
+printf '%s\n' "$output" | /usr/bin/sed '$d'

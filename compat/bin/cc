@@ -1,0 +1,15 @@
+#!/bin/bash
+# Accept 2014 C unchanged on a modern compiler. Only flags change, never entry source.
+args=(); is_c=0
+for a in "$@"; do
+  case "$a" in
+    -Wl,--no-as-needed*|-Wl,--as-needed*|-static) ;;
+    *.c) is_c=1; args+=("$a") ;;
+    *) args+=("$a") ;;
+  esac
+done
+extra=(-w -fcommon -ffp-contract=off -Wno-return-mismatch -Wno-int-conversion -Wno-implicit-function-declaration -Wno-implicit-int -Wno-incompatible-pointer-types)
+[ "$is_c" = 1 ] && extra+=(-std=gnu89)
+extra+=("-I$PHYSIO_BEAT_BENCH_COMPAT/include" -I/opt/homebrew/include -L/opt/homebrew/lib)
+[ -n "$WFDB_HOME" ] && extra+=("-I$WFDB_HOME/include" "-L$WFDB_HOME/lib" "-Wl,-rpath,$WFDB_HOME/lib")
+exec /usr/bin/clang "${extra[@]}" "${args[@]}"
