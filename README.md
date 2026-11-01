@@ -141,7 +141,7 @@ Those changes could in principle alter results. That's precisely what the compar
 ## Limitations
 
 - **One platform.** macOS on Apple Silicon only, with Octave 11 rather than the 2014 version. Linux support is next.
-- **Not every entry is deterministic here.** `rapr-25` crashes intermittently: a binary segfaults on some runs, and record 1565 scored 0 true positives in one run of five and 697 in the others. Two full runs of the same code, one from a clean clone, agreed on all 8,400 record results except 5 from `rapr-25`, so the published table and tiers didn't change. Two runs on one machine isn't a formal determinism study.
+- **Not every entry is deterministic here.** `rapr-25` doesn't give the same answer twice; see [below](#rapr-25-isnt-reproducible-here).
 - **Exit codes are recorded but don't decide anything.** Many 2014 scripts exit oddly. `jesus.presedo-15` and `lixuejianwork-15` exit non-zero on all 100 training records yet reproduce exactly. The archive comparison is the test.
 - **Exact reproduction is checked on the training set only**, because that's all entries archived. A pass there doesn't prove identical behaviour on the augmented set.
 - **The augmented set was public while follow-up entries were developed**, so it isn't a clean held-out test for them.
@@ -151,6 +151,21 @@ Those changes could in principle alter results. That's precisely what the compar
 - **Record 42878 has no ECG.** Under the Challenge rule, ECG-only detectors score zero on it, so they're also compared on the other 99 records above.
 - **`fetch` is unverified end to end.** PhysioNet returned HTTP 500 on every attempt during final verification, so the clean-clone run used a local copy of the same archive. Everything after the download ran from a clean clone. Tests that can run on hosted CI were checked without the native tools, but CI itself hasn't run, because nothing has been pushed.
 - **Records are treated as independent.** Intervals resample records. Records from one patient, if any, would make them too narrow. Intervals are uncorrected unless labelled adjusted.
+
+### `rapr-25` isn't reproducible here
+
+A binary in this entry segfaults on some runs, so its results vary with no change to code or data. Three full runs (the committed results and two clean clones) gave augmented-set scores of **82.64, 83.94 and 83.37**. The published table uses the first, which is one sample rather than a settled value.
+
+| Augmented record | Committed: TP / FP / FN | Clean clone 1 | Clean clone 2 |
+|---|---|---|---|
+| 1009 | 21 / 0 / 1309 | 21 / 0 / 1309 | 21 / 2 / 1309 |
+| 1019 | 103 / 244 / 151 | 248 / 40 / 6 | 103 / 244 / 151 |
+| 1195 | 203 / 619 / 616 | 203 / 620 / 616 | 203 / 620 / 616 |
+| 1565 | 0 / 0 / 715 | 697 / 8 / 18 | 697 / 8 / 18 |
+| 1858 | 439 / 666 / 344 | 461 / 305 / 322 | 439 / 666 / 344 |
+| 2970 | 904 / 3 / 36 | 905 / 5 / 35 | 904 / 3 / 36 |
+
+Each clone was compared with the committed results across all 8,400 record results. The first differed on 5 and the second on 3, every one from `rapr-25`, and the affected records changed between runs, so other records could vary too. All other entries matched in both clones. **Clone 1 ran from an earlier commit** (`b538a01`); clone 2 ran from `8b42006`. Three runs on one machine aren't a formal determinism study, and `rapr-25` is the only entry shown to vary so far.
 
 ## Roadmap
 
