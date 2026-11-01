@@ -17,7 +17,7 @@ This is research software for benchmarking algorithms. It is not clinically vali
 
 ![Challenge scores with 95% intervals for entries that reproduce exactly and for current libraries](docs/scores.png)
 
-Scores on the 100-record augmented set, using the Challenge's official scorer (`bxb -f 0`). Intervals are 95% bootstrap intervals over records. Only the top entries that reproduce exactly are listed here, plus the `gqrs` baseline, because a score from any entry that doesn't reproduce measures our revival rather than the entry.
+Scores on the 100-record augmented set, using the Challenge's official scorer (`bxb -f 0`). Intervals are 95% bootstrap intervals over records. Only the top entries that reproduce exactly are listed here, plus the `gqrs` baseline, because a score from any entry that doesn't reproduce measures our revival rather than the entry. **These are descriptive scores, not a ranking of methods:** see [How far the comparisons go](#how-far-the-comparisons-go).
 
 | Detector | Signals used | Score (95% CI) | Official hidden-test score, 2015 |
 |---|---|---|---|
@@ -33,30 +33,42 @@ Scores on the 100-record augmented set, using the Challenge's official scorer (`
 
 Full results: [`results/summary.csv`](results/summary.csv).
 
-**Paired differences** on the 99 records that have an ECG (the first detector minus the second, [`results/comparisons.csv`](results/comparisons.csv)):
+### How far the comparisons go
 
-| Comparison | Difference (95% CI) |
-|---|---|
-| Pangerc & Jager − Vollmer | +4.06 (0.76 to 7.70) |
-| Vollmer − Behar, Johnson et al. | −0.11 (−3.13 to 2.44) |
-| Behar, Johnson et al. − `gqrs` | +4.36 (1.20 to 7.88) |
-| Behar, Johnson et al. − NeuroKit2 `elgendi2010` | +5.05 (1.11 to 9.35) |
-| `gqrs` − WFDB `xqrs` | +2.61 (0.38 to 5.11) |
-| `gqrs` − NeuroKit2 `elgendi2010` | +0.69 (−2.30 to 3.78) |
-| `gqrs` − NeuroKit2 default | +6.56 (2.78 to 10.83) |
+**No method is claimed to be better than another.** A fair superiority test isn't possible with this data today, for three reasons:
 
-**What this supports, on this noisy ICU dataset:**
-- A leading 2014 multimodal detector (Behar, Johnson et al.) still beats the best single-channel library default tested, and the plain `gqrs` baseline.
-- A library's default isn't its best method. NeuroKit2's `elgendi2010` scores 5.87 (2.21 to 10.61) above its own default here.
-- No current single-channel default tested here beats the plain `gqrs` baseline. These are defaults, not tuned configurations, on a deliberately hard dataset, so this says nothing about clean recordings or about what the libraries can do when configured for this data.
+1. **No shared untouched test set.** The Challenge's hidden set isn't public. The five top entries above have sources dated February–April 2015, after the augmented set's January 2015 release, so they could have been tuned on it. The library defaults couldn't have been. Comparisons between them on this set may favour the entries.
+2. **Not like for like.** The multimodal entries use blood pressure as well. The libraries were given one ECG channel, and only their defaults were tested.
+3. **The comparisons were chosen after seeing the scores.** Every interval below is exploratory, including the adjusted ones, which account only for the nine listed and not for the informal choosing among 42 detectors.
+
+**Paired differences**, on the 99 records that have an ECG (first minus second, [`results/comparisons.csv`](results/comparisons.csv)). Adjusted intervals are Bonferroni over these nine.
+
+| Comparison | Difference | 95% interval | Adjusted interval |
+|---|---|---|---|
+| Pangerc & Jager − Vollmer | +4.06 | 0.76 to 7.70 | −0.39 to 9.59 |
+| Vollmer − Behar, Johnson et al. | −0.11 | −3.13 to 2.44 | −4.69 to 3.37 |
+| Pangerc & Jager − Behar, Johnson et al. | +3.95 | 1.09 to 7.15 | 0.16 to 8.34 |
+| Behar, Johnson et al. − `gqrs` | +4.36 | 1.20 to 7.88 | −0.05 to 9.59 |
+| Behar, Johnson et al. − NeuroKit2 `elgendi2010` | +5.05 | 1.11 to 9.35 | −0.38 to 11.33 |
+| `gqrs` − NeuroKit2 `elgendi2010` | +0.69 | −2.30 to 3.78 | −3.53 to 5.31 |
+| `gqrs` − WFDB `xqrs` | +2.61 | 0.38 to 5.11 | −0.44 to 6.33 |
+| `gqrs` − NeuroKit2 default | +6.56 | 2.78 to 10.83 | 1.49 to 12.79 |
+| NeuroKit2 `elgendi2010` − NeuroKit2 default | +5.87 | 2.21 to 10.61 | 0.95 to 12.66 |
+
+**Choosing a method fairly.** `elgendi2010` stands out only because I looked at all six NeuroKit2 methods on this set. To separate choosing from judging ([`results/selection.csv`](results/selection.csv)):
+
+- **Choose on a random half of the augmented records, judge on the other half, 2,000 times:** the chosen method scores 5.42 above the default on unseen records (middle 95% of splits: 1.06 to 9.29), and `elgendi2010` is chosen in 94.5% of splits. That range isn't a confidence interval, because splits overlap. So the difference isn't just an artefact of picking the winner, *within this noisy set*.
+- **Choose on the 100 training records instead:** the default (99.85) ranks above `elgendi2010` (99.78), so you would keep the default. The cleaner set doesn't predict what wins on the noisy one.
+
+**What this does support:** on this deliberately hard set, a library's default wasn't its top-scoring option. Results on clean recordings and on this noisy set point in different directions, so a single score doesn't generalise. These defaults weren't tuned, so this says nothing about what the libraries can do when configured for this data.
 
 **Does the pipeline measure the right thing?** Across the 17 exact entries, augmented-set scores correlate with the official hidden-test scores: Pearson 0.993, Spearman 0.971. Two very low scorers inflate the Pearson figure; among the 15 scoring above 60, it is 0.940.
 
-**Read the top scores with care.** Pangerc's and Vollmer's sources are dated February 2015, and the augmented set was released in January 2015, so both could have been developed with this set available. Their hidden-set scores, 93.64 and 89.55, are the more independent numbers, and on those Behar, Johnson et al. (91.50) rank above Vollmer. The hidden test set isn't public, and its 200 records aren't the same as these 100, so the two columns are not directly comparable.
+**Read the top scores with care.** Their hidden-set scores are the more independent numbers, and they reorder the table: Behar, Johnson et al. (91.50) rank above Vollmer (89.55), and De Cooman (90.02) above Ding (87.66). The hidden test set isn't public, and its 200 records aren't the same as these 100, so the two columns are not directly comparable.
 
 ## Reproduce it
 
-Requires macOS on Apple Silicon, [Homebrew](https://brew.sh) and [uv](https://docs.astral.sh/uv/). About 25 minutes on an M5 MacBook Pro, plus the download.
+Requires macOS on Apple Silicon, [Homebrew](https://brew.sh) and [uv](https://docs.astral.sh/uv/). About 30 minutes on an M5 MacBook Pro, plus the download.
 
 ```bash
 git clone https://github.com/nicoladelbene/physio-beat-bench
@@ -71,7 +83,7 @@ uv run physio-beat-bench entries
 uv run physio-beat-bench report
 ```
 
-Records and entries are downloaded from PhysioNet and never redistributed here. This repo holds only original code and per-record counts.
+PhysioNet has reported slow performance during an infrastructure migration, so `fetch` may fail for a while with an HTTP error; rerun it later. Records and entries are downloaded from PhysioNet and never redistributed here. This repo holds only original code and per-record counts.
 
 ## How it works
 
@@ -103,7 +115,7 @@ Those changes could in principle alter results. That's precisely what the compar
 ## Limitations
 
 - **One platform.** macOS on Apple Silicon only, with Octave 11 rather than the 2014 version. Linux support is next.
-- **Not every entry is deterministic here.** `rapr-25` crashes intermittently: a binary segfaults on some runs, and record 1565 scored 0 true positives in one run of four and 697 in the others. Between two full runs, 30 of 35 entries gave identical counts on every record. Four of the other five changed because of a setup fix between those runs, and `rapr-25` is the unstable one. This is not a formal determinism study.
+- **Not every entry is deterministic here.** `rapr-25` crashes intermittently: a binary segfaults on some runs, and record 1565 scored 0 true positives in one run of five and 697 in the others. Two full runs of the same code, one from a clean clone, agreed on all 8,400 record results except 5 from `rapr-25`, so the published table and tiers didn't change. Two runs on one machine isn't a formal determinism study.
 - **Exit codes are recorded but don't decide anything.** Many 2014 scripts exit oddly. `jesus.presedo-15` and `lixuejianwork-15` exit non-zero on all 100 training records yet reproduce exactly. The archive comparison is the test.
 - **Exact reproduction is checked on the training set only**, because that's all entries archived. A pass there doesn't prove identical behaviour on the augmented set.
 - **The augmented set was public while follow-up entries were developed**, so it isn't a clean held-out test for them.
@@ -111,7 +123,8 @@ Those changes could in principle alter results. That's precisely what the compar
 - **Library defaults only.** This isn't a tuned comparison, and the libraries are not at fault for lacking a second signal.
 - **Benchmark scores are not clinical performance.** Nothing here supports clinical use or a claim about patient outcomes.
 - **Record 42878 has no ECG.** Under the Challenge rule, ECG-only detectors score zero on it, so they're also compared on the other 99 records above.
-- **`fetch` was not exercised end to end.** PhysioNet returned HTTP 500 during final verification, so the fresh-clone run used an identical local copy of the archive. The final numbers here came from a rerun in the working copy after fixes from a code review, not from a new clean clone.
+- **`fetch` is unverified end to end.** PhysioNet returned HTTP 500 on every attempt during final verification, so the clean-clone run used a local copy of the same archive. Everything after the download ran from a clean clone. Tests that can run on hosted CI were checked without the native tools, but CI itself hasn't run, because nothing has been pushed.
+- **Records are treated as independent.** Intervals resample records. Records from one patient, if any, would make them too narrow. Intervals are uncorrected unless labelled adjusted.
 
 ## Roadmap
 
@@ -133,4 +146,4 @@ All detection methods belong to their authors, listed in each entry's `AUTHORS` 
 - Johnson, Behar, Andreotti, Clifford, Oster, [Multimodal heart beat detection using signal quality indices](https://integ04-cnspfv.archimed.fr/doc/OAI_1/oai-HAL-hal-01730819v1), Physiological Measurement 2015
 - [WFDB Software Package](https://github.com/bemoody/wfdb) 10.7.0, [wfdb-python](https://github.com/MIT-LCP/wfdb-python), [NeuroKit2](https://github.com/neuropsychology/NeuroKit)
 
-Code in this repo: [MIT](LICENSE). Challenge entries keep their authors' own terms and aren't included here.
+Code in this repo: [MIT](LICENSE). Challenge entries keep their authors' own terms and aren't included here. The per-record counts in `results/` are derived from the Challenge data, under its Open Data Commons Attribution License.

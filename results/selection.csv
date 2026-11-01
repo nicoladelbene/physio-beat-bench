@@ -1,0 +1,7 @@
+method,training_score,augmented_score,selected_share_of_splits,held_out_gain_over_default,gain_range_low,gain_range_high,records
+neurokit2-neurokit,99.85,79.92,0.0,5.42,1.06,9.29,99
+neurokit2-elgendi2010,99.78,85.73,0.945,5.42,1.06,9.29,99
+neurokit2-rodrigues2021,99.78,82.29,0.053,5.42,1.06,9.29,99
+neurokit2-pantompkins1985,99.44,80.28,0.002,5.42,1.06,9.29,99
+neurokit2-hamilton2002,99.09,81.11,0.001,5.42,1.06,9.29,99
+neurokit2-engzeemod2012,97.5,71.68,0.0,5.42,1.06,9.29,99

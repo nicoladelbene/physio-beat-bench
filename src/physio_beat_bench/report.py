@@ -183,8 +183,9 @@ def paired_difference(
     exclude: tuple[str, ...] = (),
     iterations: int = 5000,
     seed: int = 2014,
+    confidence: float = 0.95,
 ) -> tuple[float, float, float]:
-    """Score difference (first minus second) with a 95% interval, resampling shared records."""
+    """Score difference (first minus second) with an interval, resampling shared records."""
 
     def table(name: str) -> pd.DataFrame:
         rows = results[(results["detector"] == name) & (results["set"] == set_name)]
@@ -199,7 +200,8 @@ def paired_difference(
         score_counts(a.iloc[picks]) - score_counts(b.iloc[picks])
         for picks in rng.integers(0, len(a), size=(iterations, len(a)))
     ]
-    low, high = np.percentile(differences, [2.5, 97.5])
+    tail = 100 * (1 - confidence) / 2
+    low, high = np.percentile(differences, [tail, 100 - tail])
     return (
         round(score_counts(a) - score_counts(b), 2),
         round(float(low), 2),
@@ -224,13 +226,101 @@ COMPARISONS = (
 
 
 def comparisons(results: pd.DataFrame) -> pd.DataFrame:
+    """Plain 95% intervals, plus Bonferroni-adjusted ones over the comparisons listed."""
+    adjusted = 1 - 0.05 / len(COMPARISONS)
     rows = []
     for first, second in COMPARISONS:
         difference, low, high = paired_difference(results, first, second, exclude=NO_ECG_RECORDS)
+        _, adjusted_low, adjusted_high = paired_difference(
+            results, first, second, exclude=NO_ECG_RECORDS, confidence=adjusted
+        )
         rows.append(
-            {"first": first, "second": second, "difference": difference, "low": low, "high": high}
+            {
+                "first": first,
+                "second": second,
+                "difference": difference,
+                "low": low,
+                "high": high,
+                "adjusted_low": adjusted_low,
+                "adjusted_high": adjusted_high,
+            }
         )
     return pd.DataFrame(rows)
+
+
+NEUROKIT_DEFAULT = "neurokit2-neurokit"
+NEUROKIT_METHODS = (
+    NEUROKIT_DEFAULT,
+    "neurokit2-elgendi2010",
+    "neurokit2-rodrigues2021",
+    "neurokit2-hamilton2002",
+    "neurokit2-pantompkins1985",
+    "neurokit2-engzeemod2012",
+)
+
+
+def held_out_selection(
+    results: pd.DataFrame,
+    methods,
+    baseline: str,
+    set_name: str = "augmented",
+    exclude: tuple[str, ...] = (),
+    splits: int = 2000,
+    seed: int = 2014,
+) -> dict:
+    """Pick the best method on half the records and judge it on the other half, repeatedly.
+
+    The gain is the chosen method minus the baseline on records the choice never saw. The range is
+    the spread across random splits, which overlap, so it is not a confidence interval.
+    """
+    rows = results[(results["set"] == set_name) & ~results["record"].astype(str).isin(exclude)]
+    tables = {
+        name: rows[rows["detector"] == name].assign(record=lambda f: f["record"].astype(str))
+        .set_index("record")
+        for name in methods
+    }  # fmt: skip
+    records = list(next(iter(tables.values())).index)
+    rng = np.random.default_rng(seed)
+    gains, selected = [], []
+    for _ in range(splits):
+        shuffled = rng.permutation(records)
+        choose, judge = shuffled[: len(records) // 2], shuffled[len(records) // 2 :]
+        winner = max(methods, key=lambda name: score_counts(tables[name].loc[choose]))
+        selected.append(winner)
+        gains.append(
+            score_counts(tables[winner].loc[judge]) - score_counts(tables[baseline].loc[judge])
+        )
+    low, high = np.percentile(gains, [2.5, 97.5])
+    return {
+        "records": len(records),
+        "held_out_gain": round(float(np.mean(gains)), 2),
+        "gain_range_low": round(float(low), 2),
+        "gain_range_high": round(float(high), 2),
+        "selected_share": {name: round(selected.count(name) / splits, 3) for name in methods},
+    }
+
+
+def method_selection(results: pd.DataFrame, summary: pd.DataFrame) -> pd.DataFrame:
+    """How NeuroKit2's methods fare when selection is kept apart from evaluation."""
+    methods = summary[summary["detector"].isin(NEUROKIT_METHODS)]
+    held_out = held_out_selection(
+        results, list(NEUROKIT_METHODS), NEUROKIT_DEFAULT, exclude=NO_ECG_RECORDS
+    )
+    return pd.DataFrame(
+        [
+            {
+                "method": row["detector"],
+                "training_score": row["training_score"],
+                "augmented_score": row["augmented_score"],
+                "selected_share_of_splits": held_out["selected_share"][row["detector"]],
+                "held_out_gain_over_default": held_out["held_out_gain"],
+                "gain_range_low": held_out["gain_range_low"],
+                "gain_range_high": held_out["gain_range_high"],
+                "records": held_out["records"],
+            }
+            for _, row in methods.sort_values("training_score", ascending=False).iterrows()
+        ]
+    )
 
 
 def official_agreement(summary: pd.DataFrame) -> dict[str, float]:

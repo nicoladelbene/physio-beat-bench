@@ -14,6 +14,7 @@ from .report import (
     comparisons,
     figure,
     healthy_looking_mismatches,
+    method_selection,
     official_agreement,
     outcomes_figure,
     reproduction_tiers,
@@ -61,6 +62,9 @@ def main() -> None:
         paired.to_csv(results / "comparisons.csv", index=False)
         print(paired.to_string(index=False))
         summary.to_csv(results / "summary.csv", index=False)
+        selection = method_selection(combined, summary)
+        selection.to_csv(results / "selection.csv", index=False)
+        print(selection.to_string(index=False))
         print(summary.to_string(index=False))
 
 

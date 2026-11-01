@@ -1,9 +1,11 @@
 """Report rules that protect what the headline table is allowed to claim."""
 
 import pandas as pd
+import pytest
 
 from physio_beat_bench.report import (
     healthy_looking_mismatches,
+    held_out_selection,
     paired_difference,
     performance_table,
     reproduction_tiers,
@@ -78,3 +80,45 @@ def test_better_detector_has_a_positive_difference_and_interval():
 def test_excluded_records_are_left_out_of_the_comparison():
     frame = pd.concat([per_record("a", [10, 10]), per_record("b", [10, 0])])
     assert paired_difference(frame, "a", "b", exclude=("1",)) == (0.0, 0.0, 0.0)
+
+
+def _records(detector, values, set_name="augmented"):
+    return [
+        {"detector": detector, "set": set_name, "record": str(i), "tp": tp, "fp": 0, "fn": 10 - tp}
+        for i, tp in enumerate(values)
+    ]
+
+
+def test_selection_is_judged_only_on_records_it_did_not_see():
+    # Half the records favour one method, half the other, so a chooser that sees only one half
+    # must pick wrongly for the other half and gain nothing, however good its best half looked.
+    half = 20
+    frame = pd.DataFrame(
+        _records("first", [10] * half + [5] * half) + _records("second", [5] * half + [10] * half)
+    )
+    result = held_out_selection(frame, ["first", "second"], baseline="second", splits=200)
+    assert result["held_out_gain"] <= 0
+
+
+def test_a_truly_better_method_keeps_its_gain_out_of_sample():
+    frame = pd.DataFrame(_records("good", [10] * 40) + _records("poor", [5] * 40))
+    result = held_out_selection(frame, ["good", "poor"], baseline="poor", splits=50)
+    # good scores 100; poor has Se 50 and +P 100, so (50 + 100 + 50 + 100) / 4 = 75.
+    assert result["held_out_gain"] == pytest.approx(25.0)
+    assert result["selected_share"]["good"] == 1.0
+
+
+def test_held_out_selection_can_exclude_records():
+    frame = pd.DataFrame(_records("a", [10] * 10) + _records("b", [10] * 10))
+    result = held_out_selection(frame, ["a", "b"], baseline="b", splits=5, exclude=("0", "1"))
+    assert result["records"] == 8
+
+
+def test_adjusted_interval_is_wider_and_contains_the_plain_one():
+    frame = pd.DataFrame(
+        _records("a", [10, 9, 8, 10, 7, 9, 10, 6] * 5)
+        + _records("b", [9, 10, 7, 8, 9, 5, 8, 7] * 5)
+    )
+    _, low, high = paired_difference(frame, "a", "b")
+    _, adjusted_low, adjusted_high = paired_difference(frame, "a", "b", confidence=1 - 0.05 / 9)
+    assert adjusted_low <= low and adjusted_high >= high
