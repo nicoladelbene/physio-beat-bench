@@ -149,7 +149,7 @@ Those changes could in principle alter results. That's precisely what the compar
 - **Library defaults only.** This isn't a tuned comparison, and the libraries are not at fault for lacking a second signal.
 - **Benchmark scores are not clinical performance.** Nothing here supports clinical use or a claim about patient outcomes.
 - **Record 42878 has no ECG.** Under the Challenge rule, ECG-only detectors score zero on it, so they're also compared on the other 99 records above.
-- **`fetch` is unverified end to end.** PhysioNet returned HTTP 500 on every attempt during final verification, so the clean-clone run used a local copy of the same archive. Everything after the download ran from a clean clone. Tests that can run on hosted CI were checked without the native tools, but CI itself hasn't run, because nothing has been pushed.
+- **`fetch` is unverified end to end.** PhysioNet returned HTTP 500 on every attempt during final verification, so the clean-clone run used a local copy of the same archive. Everything after the download ran from a clean clone. CI passes on GitHub Actions on Linux, where tests that need the native tools or the data are skipped, so it doesn't exercise the sandbox.
 - **Records are treated as independent.** Intervals resample records. Records from one patient, if any, would make them too narrow. Intervals are uncorrected unless labelled adjusted.
 
 ### `rapr-25` isn't reproducible here
