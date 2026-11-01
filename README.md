@@ -38,7 +38,7 @@ Full results: [`results/summary.csv`](results/summary.csv).
 | Comparison | Difference (95% CI) |
 |---|---|
 | Pangerc & Jager − Vollmer | +4.06 (0.76 to 7.70) |
-| Vollmer − Behar, Johnson et al. | -0.11 (−3.13 to 2.44) |
+| Vollmer − Behar, Johnson et al. | −0.11 (−3.13 to 2.44) |
 | Behar, Johnson et al. − `gqrs` | +4.36 (1.20 to 7.88) |
 | Behar, Johnson et al. − NeuroKit2 `elgendi2010` | +5.05 (1.11 to 9.35) |
 | `gqrs` − WFDB `xqrs` | +2.61 (0.38 to 5.11) |
