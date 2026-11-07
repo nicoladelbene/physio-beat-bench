@@ -5,4 +5,5 @@ args=()
 for a in "$@"; do
   args+=("$(printf '%s' "$a" | /usr/bin/perl -pe "s/\b(\w+)\('([^']+)',\s*0\)/physio_beat_bench_call('\$1','\$2',0)/")")
 done
-exec /opt/homebrew/bin/octave --no-gui --no-window-system "${args[@]}"
+case "$(uname -s)" in Darwin) real=/opt/homebrew/bin/octave ;; *) real=/usr/bin/octave ;; esac
+exec "$real" --no-gui --no-window-system "${args[@]}"

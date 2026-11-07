@@ -1,2 +1,4 @@
 #!/bin/bash
+# macOS has no tac; Linux has the real one.
+[ "$(uname -s)" != Darwin ] && exec /usr/bin/tac "$@"
 exec /usr/bin/tail -r "$@"

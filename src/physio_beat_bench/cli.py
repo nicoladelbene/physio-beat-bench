@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from .bench import Layout, run_entries, run_modern
+from .compare import compare_runs
 from .fetch import fetch
 from .report import (
     add_official_scores,
@@ -43,6 +44,11 @@ def main() -> None:
     modern = commands.add_parser("modern", help="run current open-source detectors")
     modern.add_argument("--jobs", type=int, default=8)
     commands.add_parser("report", help="summarise results")
+    comparer = commands.add_parser(
+        "compare", help="compare --results (the candidate) with another run, record by record"
+    )
+    comparer.add_argument("--baseline", type=Path, required=True)
+    comparer.add_argument("--out", type=Path, help="write per-record and per-detector CSVs here")
     args = parser.parse_args()
 
     layout = Layout(args.data.resolve())
@@ -60,6 +66,14 @@ def main() -> None:
         )
     elif args.command == "modern":
         run_modern(layout, results / "modern.csv", args.jobs)
+    elif args.command == "compare":
+        rows, detectors = compare_runs(args.baseline.resolve(), results)
+        print(rows.groupby(["kind", "outcome"]).size().unstack(fill_value=0).to_string())
+        print(detectors[detectors["identical"] < detectors["rows"]].to_string(index=False))
+        if args.out:
+            args.out.mkdir(parents=True, exist_ok=True)
+            rows.to_csv(args.out / "rows.csv", index=False)
+            detectors.to_csv(args.out / "detectors.csv", index=False)
     else:
         names = ("entries.csv", "modern.csv")
         frames = [pd.read_csv(results / name) for name in names if (results / name).exists()]

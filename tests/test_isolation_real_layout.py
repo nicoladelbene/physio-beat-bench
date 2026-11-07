@@ -2,18 +2,18 @@
 
 import shutil
 import stat
-import sys
 from pathlib import Path
 
 import pytest
+from conftest import sandbox_problem
 
 from physio_beat_bench.runner import RecordStatus, run_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 pytestmark = pytest.mark.skipif(
-    sys.platform != "darwin" or not (DATA / "training").is_dir(),
-    reason="needs macOS and the downloaded Challenge data",
+    sandbox_problem() is not None or not (DATA / "training").is_dir(),
+    reason="needs a working sandbox and the downloaded Challenge data",
 )
 
 

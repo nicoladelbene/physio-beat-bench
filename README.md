@@ -74,23 +74,24 @@ Full results: [`results/summary.csv`](results/summary.csv).
 
 ## Reproduce it
 
-Requires macOS on Apple Silicon, [Homebrew](https://brew.sh) and [uv](https://docs.astral.sh/uv/). About 30 minutes on an M5 MacBook Pro, plus the download.
+Requires [uv](https://docs.astral.sh/uv/) and either macOS on Apple Silicon with [Homebrew](https://brew.sh), or Debian/Ubuntu Linux. About 30 minutes on an M5 MacBook Pro, plus the download. **The published results come from macOS. Linux support is new, and no full Linux run has been compared with them yet** (see [Limitations](#limitations)).
 
 ```bash
 git clone https://github.com/nicoladelbene/physio-beat-bench
 cd physio-beat-bench
 uv sync --extra modern --group dev
-./scripts/setup_macos.sh                         # native tools; builds WFDB 10.7.0
+./scripts/setup_macos.sh                         # macOS: native tools; builds WFDB 10.7.0
+./scripts/setup_linux.sh                         # or Linux: apt packages, bubblewrap, same WFDB build
 export WFDB_HOME="$PWD/data/tools/wfdb"
 ```
 
 Then get the data, one of two ways:
 
 ```bash
-# A. Download. UNVERIFIED end to end: PhysioNet was returning HTTP 500.
+# A. Download. Verified end to end on 2026-11-07 (55 minutes; PhysioNet was slow).
 uv run physio-beat-bench fetch                   # ~530 MB
 
-# B. Use a copy of the archive you already have. No network needed. This route is verified.
+# B. Use a copy of the archive you already have. No network needed.
 uv run physio-beat-bench fetch --archive /path/to/challenge-2014.zip
 ```
 
@@ -98,7 +99,7 @@ Either way, `fetch` prints the archive's SHA-256 and says whether it matches the
 
 `d96fa8fd74a04d3935b1bd8b186c88afc0a4074b29dad9d2b1ba30b68ecab352`
 
-That checksum is of the copy used here. It hasn't been compared with PhysioNet's own checksum list, because the file server was failing. If you get a different archive, your results may differ.
+That checksum is of the copy used here. A fresh download on 2026-11-07 gave the same checksum and the same 301 training, 301 augmented and 35 entry files. It still hasn't been compared with a checksum PhysioNet publishes. If you get a different archive, your results may differ.
 
 Then run everything:
 
@@ -131,16 +132,18 @@ Entries run through their original `setup.sh` and `next.sh`, and **no entry's ow
 
 - **Compiler flags** accept 2014-era C, with `-ffp-contract=off` so arithmetic isn't silently rearranged.
 - **Octave shims** replace the bundled 2014 WFDB toolbox, whose Linux native libraries don't load here, with calls to the native WFDB tools. Newly written, and tested by round trip.
-- **Small Linux-to-macOS adapters** cover `sed -i`, `tac` and `wfdb2mat`'s report format, and a 2014-era `mean`, `nanmean` and friends that Octave 11 changed or dropped.
-- **Linux-only prebuilt binaries and `.o` files are deleted** so `make` rebuilds them, and the bundled toolbox wrappers are removed so the shims apply. Each Octave entry's startup file gets added lines that load the shims first.
+- **Small platform adapters** cover BSD `sed -i` and the missing `tac` on macOS, `wfdb2mat`'s report format, and a 2014-era `mean`, `nanmean` and friends that Octave 11 changed or dropped. The compiler wrappers call clang on macOS and gcc on Linux, closer to the 2014 Challenge's own Linux build.
+- **Prebuilt binaries and `.o` shipped in the archives are deleted** (on Linux too) so `make` rebuilds them from source, and the bundled toolbox wrappers are removed so the shims apply. Each Octave entry's startup file gets added lines that load the shims first.
 
-The sandbox blocks reads of reference labels (`.atr`), archived outputs (`challenge/` folders) and Challenge archives (`.zip`) anywhere on disk, in `setup.sh` as well as `next.sh`. Regression tests check this with fake entries and on the real data layout, with a positive control. A code review found gaps in earlier versions, now closed. Entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
+The sandbox blocks reads of reference labels (`.atr`), archived outputs (`challenge/` folders) and Challenge archives (`.zip`) anywhere on disk, in `setup.sh` as well as `next.sh`. Regression tests check this with fake entries and on the real data layout, with a positive control. A code review found gaps in earlier versions, now closed. On macOS, entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
+
+On Linux the sandbox is [bubblewrap](https://github.com/containers/bubblewrap) with an allow-list instead: the entry sees the system directories read-only, the `compat/` shims, the WFDB tools, a private `/tmp` and its own work folder, and nothing else exists for it. It has no network and its own process namespace. The runner refuses to start if a protected folder would be visible, or if the sandbox fails a start-up probe, so a broken sandbox can't pass for entries scoring zero. Ubuntu 23.10+ restricts the user namespaces bubblewrap needs; `setup_linux.sh` lifts that only on CI runners.
 
 Those changes could in principle alter results. That's precisely what the comparison with the archive detects, and why it decides what gets reported.
 
 ## Limitations
 
-- **One platform.** macOS on Apple Silicon only, with Octave 11 rather than the 2014 version. Linux support is next.
+- **One verified platform.** The results come from macOS on Apple Silicon with Octave 11, not the 2014 version. Linux support (bubblewrap, gcc, Ubuntu's Octave packages) is implemented, but **no full Linux run has been compared with these results yet**. The `Reproduce on Linux` workflow does that on x86_64 and arm64, and reports every record that differs; Linux may well not match exactly.
 - **Not every entry is deterministic here.** `rapr-25` doesn't give the same answer twice; see [below](#rapr-25-isnt-reproducible-here).
 - **Exit codes are recorded but don't decide anything.** Many 2014 scripts exit oddly. `jesus.presedo-15` and `lixuejianwork-15` exit non-zero on all 100 training records yet reproduce exactly. The archive comparison is the test.
 - **Exact reproduction is checked on the training set only**, because that's all entries archived. A pass there doesn't prove identical behaviour on the augmented set.
@@ -149,7 +152,7 @@ Those changes could in principle alter results. That's precisely what the compar
 - **Library defaults only.** This isn't a tuned comparison, and the libraries are not at fault for lacking a second signal.
 - **Benchmark scores are not clinical performance.** Nothing here supports clinical use or a claim about patient outcomes.
 - **Record 42878 has no ECG.** Under the Challenge rule, ECG-only detectors score zero on it, so they're also compared on the other 99 records above.
-- **`fetch` is unverified end to end.** PhysioNet returned HTTP 500 on every attempt during final verification, so the clean-clone run used a local copy of the same archive. Everything after the download ran from a clean clone. CI passes on GitHub Actions on Linux, where tests that need the native tools or the data are skipped, so it doesn't exercise the sandbox.
+- **The download was verified after publication, not before.** PhysioNet returned HTTP 500 during final verification, so the clean-clone run used a local copy. A download on 2026-11-07 matched that copy's checksum. CI's plain test job skips the tests that need native tools or data; the `linux-native` job runs them and fails on any skip.
 - **Records are treated as independent.** Intervals resample records. Records from one patient, if any, would make them too narrow. Intervals are uncorrected unless labelled adjusted.
 
 ### `rapr-25` isn't reproducible here
@@ -165,11 +168,11 @@ Results from this entry vary between runs with no change to the entry or its dat
 | 1858 | 439 / 666 / 344 | 461 / 305 / 322 | 439 / 666 / 344 |
 | 2970 | 904 / 3 / 36 | 905 / 5 / 35 | 904 / 3 / 36 |
 
-Each clone was compared with the committed results across all 8,400 record results. The first differed on 5 and the second on 3, every one from `rapr-25`, and the affected records changed between runs, so other records could vary too. All other entries matched in both clones. **The runs used different commits:** the committed results `bd14d97`, clone 1 `b538a01`, clone 2 `8b42006`. None of the changes between them touched the entries or the data, and every other entry's results matched. Three runs on one machine aren't a formal determinism study, and `rapr-25` is the only entry shown to vary so far.
+Each clone was compared with the committed results across all 8,400 record results. The first differed on 5 and the second on 3, every one from `rapr-25`, and the affected records changed between runs, so other records could vary too. All other entries matched in both clones. **The runs used different commits:** the committed results `bd14d97`, clone 1 `b538a01`, clone 2 `8b42006`. None of the changes between them touched the entries or the data, and every other entry's results matched. A fourth full run on 2026-11-07, after the runner gained Linux support, differed from the committed results on 4 of 8,400 records, again all `rapr-25`. Records 1019, 1565 and 1858 gave clone 1's values above, and record 2800 changed from 653 / 137 / 99 to 653 / 139 / 99. Four runs on one machine aren't a formal determinism study, and `rapr-25` is the only entry shown to vary so far.
 
 ## Roadmap
 
-- Linux and container support, plus a determinism check
+- Compare a full Linux run with these results, then container support and a determinism check
 - Bring back more of the 18 entries that didn't reproduce, keeping the archive as the only test of success
 - Tuned library configurations as a separate, clearly labelled comparison
 - A leave-records-out evaluation for any method tuned on this data
