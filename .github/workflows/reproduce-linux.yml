@@ -57,3 +57,4 @@ jobs:
             comparison.txt
             comparison/
             linux-results/
+            work/runs/**/*.log
