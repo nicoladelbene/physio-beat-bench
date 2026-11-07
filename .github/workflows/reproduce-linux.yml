@@ -4,14 +4,14 @@ name: Reproduce on Linux
 on:
   workflow_dispatch:
   # TEMPORARY, remove before merging: workflow_dispatch only works once this file is on main, so
-  # until then a push to this branch runs it, but only if the commit message asks for it.
+  # until then a push to this branch runs it, but only if the commit message starts with [reproduce-linux].
   push:
     branches: [linux-reproduction]
 permissions:
   contents: read
 jobs:
   reproduce:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[reproduce-linux]')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[reproduce-linux]')
     strategy:
       fail-fast: false
       matrix:
