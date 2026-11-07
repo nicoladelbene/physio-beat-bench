@@ -56,11 +56,24 @@ def wfdb_home() -> Path | None:
     return Path(configured) if configured else None
 
 
+def _linux_java_bin(jvm: Path = Path("/usr/lib/jvm")) -> list[str]:
+    """The newest distribution OpenJDK, 18 or later, so Java sources are read as UTF-8 under
+    LC_ALL=C (JEP 400), as the macOS JDK does. Older JDKs read them as ASCII and some entries'
+    sources then fail to compile. Empty if none is installed."""
+    found = []
+    for home in jvm.glob("java-*-openjdk*"):
+        version = home.name.split("-")[1]
+        if version.isdigit() and int(version) >= 18 and (home / "bin" / "java").exists():
+            found.append((int(version), home / "bin"))
+    return [str(max(found)[1])] if found else []
+
+
 def _environment(work: Path) -> dict[str, str]:
     path = [
         str(COMPAT / "bin"),
         "/opt/homebrew/bin",
         "/opt/homebrew/opt/openjdk/bin",
+        *(_linux_java_bin() if sys.platform.startswith("linux") else []),
         "/usr/local/bin",
         "/usr/bin",
         "/bin",

@@ -77,3 +77,20 @@ def test_unsupported_platform_is_an_error(monkeypatch, tmp_path):
     monkeypatch.setattr(runner.sys, "platform", "win32")
     with pytest.raises(runner.SandboxUnavailable):
         runner._sandbox_command(tmp_path, denied_paths(tmp_path))
+
+
+def fake_jdk(jvm: Path, name: str) -> Path:
+    (jvm / name / "bin").mkdir(parents=True)
+    (jvm / name / "bin" / "java").touch()
+    return jvm / name / "bin"
+
+
+def test_entries_get_the_newest_jdk_that_reads_sources_as_utf8(tmp_path):
+    fake_jdk(tmp_path, "java-17-openjdk-amd64")
+    fake_jdk(tmp_path, "java-21-openjdk-amd64")
+    assert runner._linux_java_bin(tmp_path) == [str(tmp_path / "java-21-openjdk-amd64" / "bin")]
+
+
+def test_no_jdk_from_18_on_means_no_path_change(tmp_path):
+    fake_jdk(tmp_path, "java-17-openjdk-arm64")
+    assert runner._linux_java_bin(tmp_path) == []

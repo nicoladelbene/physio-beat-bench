@@ -8,7 +8,11 @@ line compiler "$cc --version"
 line octave "octave --no-gui --no-window-system --version 2>/dev/null | grep -m1 version"
 line packages "octave --quiet --no-gui --eval \"x = pkg('list'); printf('%s ', cellfun(@(p) [p.name '-' p.version], x, 'UniformOutput', false){:})\""
 # The runner puts Homebrew's OpenJDK first on macOS; /usr/bin/java there is only a stub.
+# On Linux it puts the newest /usr/lib/jvm OpenJDK from 18 on first. Report the one entries get.
 java=java; [ -x /opt/homebrew/opt/openjdk/bin/java ] && java=/opt/homebrew/opt/openjdk/bin/java
+linux_jdk=$(ls -d /usr/lib/jvm/java-*-openjdk*/bin 2>/dev/null | sort -V | tail -1)
+[ -n "$linux_jdk" ] && java="$linux_jdk/java"
+line mkoctfile "command -v mkoctfile >/dev/null && echo present || echo missing"
 line java "$java -version"
 line wfdb "\"\$WFDB_HOME/bin/wfdb-config\" --version"
 line python "uv run python --version"

@@ -2,11 +2,13 @@
 # Install the native tools the bench needs on Debian/Ubuntu, and build WFDB 10.7.0 into
 # data/tools/wfdb. Tested on GitHub's ubuntu-24.04 runners; other distributions need equivalents.
 set -euo pipefail
+# octave-dev provides mkoctfile, which some entries use to build MEX files (Homebrew's Octave has it).
+# OpenJDK 21 reads Java sources as UTF-8 like the macOS JDK; the runner puts it first on PATH.
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   build-essential bubblewrap curl ca-certificates perl \
-  octave octave-control octave-signal octave-statistics octave-image \
-  libgsl-dev libboost-dev default-jdk-headless flac libflac-dev libsndfile1-dev libcurl4-openssl-dev
+  octave octave-dev octave-control octave-signal octave-statistics octave-image \
+  libgsl-dev libboost-dev openjdk-21-jdk-headless flac libflac-dev libsndfile1-dev libcurl4-openssl-dev
 
 # Ubuntu 23.10+ blocks unprivileged user namespaces through AppArmor, which bubblewrap needs.
 # CI runners are disposable, so the restriction is lifted there. On your own machine, prefer an
