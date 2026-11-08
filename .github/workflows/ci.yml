@@ -10,5 +10,26 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --group dev
       - run: uv run ruff check src tests
-      # Tests needing the sandbox, WFDB or Octave skip themselves here; see the README for a full run.
+      # Pure-Python tests. Native-tool tests skip here and run in the next job.
       - run: uv run pytest -q
+
+  linux-native:
+    # The sandbox, WFDB and Octave tests on Linux. Any skip fails the job, so it can't pass vacuously.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/cache@v4
+        with:
+          path: data/tools/wfdb
+          key: wfdb-10.7.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/setup_linux.sh') }}
+      - run: ./scripts/setup_linux.sh
+      - run: uv sync --group dev
+      - run: ./scripts/describe_environment.sh
+        env:
+          WFDB_HOME: ${{ github.workspace }}/data/tools/wfdb
+      # The real-data isolation tests need the 506 MB archive; they run in reproduce-linux.yml.
+      - run: uv run pytest -q --ignore=tests/test_isolation_real_layout.py
+        env:
+          WFDB_HOME: ${{ github.workspace }}/data/tools/wfdb
+          PHYSIO_BEAT_BENCH_REQUIRE_NATIVE: "1"

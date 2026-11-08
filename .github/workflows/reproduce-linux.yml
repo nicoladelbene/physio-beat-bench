@@ -1,0 +1,55 @@
+name: Reproduce on Linux
+# Manual only: the full run downloads the 506 MB archive from PhysioNet and takes hours.
+# Results are uploaded as artifacts and never committed by the workflow.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 340
+    env:
+      WFDB_HOME: ${{ github.workspace }}/data/tools/wfdb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/cache@v4
+        with:
+          path: data/tools/wfdb
+          key: wfdb-10.7.0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/setup_linux.sh') }}
+      - uses: actions/cache@v4
+        with:
+          path: data/challenge-2014.zip
+          key: challenge-2014-d96fa8fd74a04d3935b1bd8b186c88afc0a4074b29dad9d2b1ba30b68ecab352
+      - run: ./scripts/setup_linux.sh
+      - run: uv sync --group dev --extra modern
+      - run: ./scripts/describe_environment.sh | tee environment.txt
+      - name: Fetch and verify the archive
+        run: |
+          uv run physio-beat-bench fetch | tee fetch.txt
+          grep -q "Matches the archive behind the published results" fetch.txt
+      # Same protocol as the committed macOS run: default per-record timeout (120 s).
+      - run: uv run physio-beat-bench --results linux-results modern --jobs "$(nproc)"
+      - run: uv run physio-beat-bench --results linux-results entries --jobs "$(nproc)"
+      - name: All tests, including isolation on the real data
+        run: uv run pytest -q
+        env:
+          PHYSIO_BEAT_BENCH_REQUIRE_NATIVE: "1"
+      - name: Compare with the committed macOS results
+        run: uv run physio-beat-bench --results linux-results compare --baseline results --out comparison | tee comparison.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-${{ runner.arch }}
+          path: |
+            environment.txt
+            fetch.txt
+            comparison.txt
+            comparison/
+            linux-results/
+            work/runs/**/*.log

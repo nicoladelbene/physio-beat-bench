@@ -2,16 +2,16 @@
 
 **Can 12-year-old heartbeat detectors still reproduce their own results?** This repo re-runs all 35 entries with sources in the [PhysioNet/CinC Challenge 2014](https://moody-challenge.physionet.org/2014/) archive on a 2026 Mac, and checks each one against the outputs it archived in 2014–15.
 
-> **The remote download is unverified.** PhysioNet's servers returned HTTP 500 for this archive during every final check, so `physio-beat-bench fetch` has not been tested end to end. The published results and the clean-clone run used a local copy of the archive; see [Reproduce it](#reproduce-it).
+> **The table below is the macOS run** (Apple Silicon, the published results). Full runs on Linux give **18 exact entries on x86_64 and 15 on arm64**; 15 are exact on all three platforms. See [On Linux](#on-linux) for which entries change and why. `physio-beat-bench fetch` was unverified at publication and has since downloaded and matched the checksum three times, on macOS and on both Linux runners.
 
-| Outcome on the 100 training records | Meaning | Entries |
+| Outcome on the 100 training records (macOS) | Meaning | Entries |
 |---|---|---|
-| **Exact** | Same beat positions as its archive on all 100 records | **17** |
-| **Near** | Same on at least 95 records, but not all | 3 |
-| **Ran, but differs** | Produced output on at least one record, and matches on fewer than 95 | 11 |
-| **Did not run** | Produced no output on any record | 4 |
+| **Exact reproduction** | Same beat positions as its archive on all 100 records | **17** |
+| **Near reproduction** | Same on at least 95 records, but not all | 3 |
+| **Divergent** | Produced output on at least one record, and matches on fewer than 95 | 11 |
+| **Failed execution** | Produced no output on any record | 4 |
 
-One of the 11 that differ, `hoog.antink-407`, produced output on only 25 records, so it's partly an execution failure. Every entry is listed in [`results/reproduction.csv`](results/reproduction.csv).
+One of the 11 divergent entries, `hoog.antink-407`, produced output on only 25 records, so it's partly an execution failure. Every entry is listed in [`results/reproduction.csv`](results/reproduction.csv), where the tiers are named `exact`, `near`, `differs` and `did_not_run`.
 
 ![Each of the 35 entries against the 100 training records: same beats as its archive, different beats, or no output](docs/reproduction_map.png)
 
@@ -72,25 +72,83 @@ Full results: [`results/summary.csv`](results/summary.csv).
 
 **Read the top scores with care.** Their hidden-set scores are the more independent numbers, and they reorder the table: Behar, Johnson et al. (91.50) rank above Vollmer (89.55), and De Cooman (90.02) above Ding (87.66). The hidden test set isn't public, and its 200 records aren't the same as these 100, so the two columns are not directly comparable.
 
+## On Linux
+
+Every entry and library was re-run on GitHub's Ubuntu 24.04 runners, on x86_64 and on arm64, with the same archive (checksum verified) and protocol as on macOS, then compared record by record with the macOS results. Commit `1a8af39`, workflow run [42423531941](https://github.com/nicoladelbene/physio-beat-bench/actions/runs/42423531941). Per-platform results, with the tool versions used, are in [`results/linux-x86_64/`](results/linux-x86_64/) and [`results/linux-arm64/`](results/linux-arm64/). The macOS results in `results/` are unchanged.
+
+### Reproduction on each platform
+
+| Outcome on the 100 training records | macOS arm64 (published) | Linux x86_64 | Linux arm64 |
+|---|---|---|---|
+| Exact reproduction | 17 | **18** | **15** |
+| Near reproduction | 3 | 1 | 3 |
+| Divergent | 11 | 11 | 12 |
+| Failed execution | 4 | 5 | 5 |
+| Entry records identical to macOS (of 7,000) | | 6,702 | 6,679 |
+| Library records identical to macOS (of 1,400) | | 1,400 | 1,400 |
+| Toolchain | Apple clang 21, Octave 11.3, statistics 2.1.1, OpenJDK 27 | gcc 13.3, Octave 8.4, statistics 1.6.3, OpenJDK 21 | same as x86_64 |
+
+Four entries change outcome between platforms:
+
+| Entry | macOS | Linux x86_64 | Linux arm64 |
+|---|---|---|---|
+| `abbasatyabi-428` | near (99) | **exact** (100) | near (99) |
+| `jesus.presedo-15` | exact | exact | **divergent** (84) |
+| `zoltan.gilian-12` | exact | exact | **near** (99) |
+| `rapr-25` | near (98) | **failed** | **failed** |
+
+**The current libraries give identical results on all three platforms.** Every difference is in a 2014 entry. Apart from `rapr-25`, no entry's augmented-set score moves by more than 0.51 points. **Linux runs were deterministic:** a rerun of the 13 affected entries matched the first run on all 2,600 records, on each architecture. (On macOS, `rapr-25` is not deterministic; [see below](#rapr-25-isnt-reproducible-here).)
+
+**What the tests do and don't show.** The test suite (79 tests, none skipped, on all three platforms) checks the bench itself: the sandbox, the annotation and scoring code, the shims. It says nothing about whether the 2014 entries reproduce. Only the archive comparison above does that.
+
+### Confirmed root causes
+
+| Entry | Platform | Evidence |
+|---|---|---|
+| `rapr-25` fails on every record | Linux, both | Its `inspectrecord.cpp` copies the record name plus `"channelsinform.txt"` into `char signalfname[20]`. That needs 22–23 bytes, so it writes 2–3 bytes past the buffer on every record, on every platform. Ubuntu's gcc builds with `_FORTIFY_SOURCE`, which detects this and aborts (`*** buffer overflow detected ***` in the logs). On macOS the same program is not stopped and produces output; why the macOS build doesn't catch it wasn't examined. The bench reports the failure rather than switching off the check |
+| `jesus.presedo-15` produces no output on 2 augmented records | Linux x86_64 | `analizamarcas` dies with SIGFPE on records 2296 and 2728. The same records run on both ARM platforms |
+| `fplesinger-25`, `hoog.antink-407` failed in a first Linux run | Linux, both | Gaps in the Linux setup, fixed before the run reported here: `hoog.antink-407` needs `mkoctfile` (Ubuntu's `octave-dev`); `fplesinger-25`'s Java sources contain non-ASCII bytes, which JDK 17 rejects under `LC_ALL=C` and JDK 18+ reads as UTF-8, as the macOS JDK does. After the fix both match macOS on all 200 records on x86_64; on arm64 `hoog.antink-407` differs on 2 (below) |
+
+### Suspected explanations, not established
+
+| Entry | Platform | Records differing (x86_64 / arm64) | Suspected cause |
+|---|---|---|---|
+| `jesus.presedo-15` SIGFPE | Linux x86_64 | 2 / 0 | Integer division by zero: x86 traps it, ARM returns 0 without a signal. The division hasn't been located in the source |
+| `laurent.sorber-21` | Linux, both | 87 / 87 | The same records on both architectures, so the platform rather than the CPU. Ubuntu has Octave 8.4 and a statistics package (1.6.3) that overrides Octave's own `std`; macOS has Octave 11.3 and statistics 2.1.1, which overrides `corr`. One x86_64 record also stops converging within the 120 s limit. The entry is divergent on every platform anyway |
+| `boris70-01` (C), `jkraemer-22` (Octave) | Linux, both | 4 / 4 each | The same 4 records on both architectures: the compiler (gcc vs clang) or the Octave version. `jkraemer-22`'s values also differ between the two architectures |
+| `abbasatyabi-428` | Linux x86_64 | 0 / 0 by score | One record's beat positions match its archive on x86_64 only. Consistent with the archive having been made on x86 Linux |
+| `rapr-25` nondeterminism | macOS | | The buffer overflow above is undefined behaviour, so it *could* cause the run-to-run variation on macOS. Nothing shows that it does; other causes are possible |
+
+### Unexplained discrepancies
+
+| Entry | Platform | Records differing (x86_64 / arm64) | What is known |
+|---|---|---|---|
+| `jesus.presedo-15` | Linux arm64 | 0 / 18 by score (14 training, 4 augmented) | 16 training records no longer match the archive's beat positions. Not floating-point contraction (its build passes `-ffp-contract=off`), and not `char` signedness (its `char` variables only hold 0 or 1) |
+| 6 entries using Octave, plus `hoog.antink-407` | Linux arm64 | 0 / 1 each (`hoog.antink-407`: 0 / 2) | All on record 2800 (plus 42511), shifting false positives by 1–3. Shared across entries, which points to a common numerical library, but that is not tested |
+| `aili415-403` | Linux x86_64 | 1 / 0 | Record 1858 only |
+
+**What this means for the headline:** "17 exact" describes the macOS environment, not the entries alone. The same archive gives 15 to 18 exact entries depending on the platform, and no expected result was changed to make the platforms agree.
+
 ## Reproduce it
 
-Requires macOS on Apple Silicon, [Homebrew](https://brew.sh) and [uv](https://docs.astral.sh/uv/). About 30 minutes on an M5 MacBook Pro, plus the download.
+Requires [uv](https://docs.astral.sh/uv/) and either macOS on Apple Silicon with [Homebrew](https://brew.sh), or Debian/Ubuntu Linux. About 30 minutes on an M5 MacBook Pro, plus the download. **The published results come from macOS.** Linux gives slightly different results; see [On Linux](#on-linux).
 
 ```bash
 git clone https://github.com/nicoladelbene/physio-beat-bench
 cd physio-beat-bench
 uv sync --extra modern --group dev
-./scripts/setup_macos.sh                         # native tools; builds WFDB 10.7.0
+./scripts/setup_macos.sh                         # macOS: native tools; builds WFDB 10.7.0
+./scripts/setup_linux.sh                         # or Linux: apt packages, bubblewrap, same WFDB build
 export WFDB_HOME="$PWD/data/tools/wfdb"
 ```
 
 Then get the data, one of two ways:
 
 ```bash
-# A. Download. UNVERIFIED end to end: PhysioNet was returning HTTP 500.
+# A. Download. Verified end to end on 2026-11-07 (55 minutes; PhysioNet was slow).
 uv run physio-beat-bench fetch                   # ~530 MB
 
-# B. Use a copy of the archive you already have. No network needed. This route is verified.
+# B. Use a copy of the archive you already have. No network needed.
 uv run physio-beat-bench fetch --archive /path/to/challenge-2014.zip
 ```
 
@@ -98,7 +156,7 @@ Either way, `fetch` prints the archive's SHA-256 and says whether it matches the
 
 `d96fa8fd74a04d3935b1bd8b186c88afc0a4074b29dad9d2b1ba30b68ecab352`
 
-That checksum is of the copy used here. It hasn't been compared with PhysioNet's own checksum list, because the file server was failing. If you get a different archive, your results may differ.
+That checksum is of the copy used here. A fresh download on 2026-11-07 gave the same checksum and the same 301 training, 301 augmented and 35 entry files. It still hasn't been compared with a checksum PhysioNet publishes. If you get a different archive, your results may differ.
 
 Then run everything:
 
@@ -131,16 +189,18 @@ Entries run through their original `setup.sh` and `next.sh`, and **no entry's ow
 
 - **Compiler flags** accept 2014-era C, with `-ffp-contract=off` so arithmetic isn't silently rearranged.
 - **Octave shims** replace the bundled 2014 WFDB toolbox, whose Linux native libraries don't load here, with calls to the native WFDB tools. Newly written, and tested by round trip.
-- **Small Linux-to-macOS adapters** cover `sed -i`, `tac` and `wfdb2mat`'s report format, and a 2014-era `mean`, `nanmean` and friends that Octave 11 changed or dropped.
-- **Linux-only prebuilt binaries and `.o` files are deleted** so `make` rebuilds them, and the bundled toolbox wrappers are removed so the shims apply. Each Octave entry's startup file gets added lines that load the shims first.
+- **Small platform adapters** cover BSD `sed -i` and the missing `tac` on macOS, `wfdb2mat`'s report format, and a 2014-era `mean`, `nanmean` and friends that Octave 11 changed or dropped. The compiler wrappers call clang on macOS and gcc on Linux, closer to the 2014 Challenge's own Linux build.
+- **Prebuilt binaries and `.o` shipped in the archives are deleted** (on Linux too) so `make` rebuilds them from source, and the bundled toolbox wrappers are removed so the shims apply. Each Octave entry's startup file gets added lines that load the shims first.
 
-The sandbox blocks reads of reference labels (`.atr`), archived outputs (`challenge/` folders) and Challenge archives (`.zip`) anywhere on disk, in `setup.sh` as well as `next.sh`. Regression tests check this with fake entries and on the real data layout, with a positive control. A code review found gaps in earlier versions, now closed. Entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
+The sandbox blocks reads of reference labels (`.atr`), archived outputs (`challenge/` folders) and Challenge archives (`.zip`) anywhere on disk, in `setup.sh` as well as `next.sh`. Regression tests check this with fake entries and on the real data layout, with a positive control. A code review found gaps in earlier versions, now closed. On macOS, entries may still write to the system's per-user temp folder as well as their own work folder, and they can read other files on the machine, so it protects the results rather than the machine: run untrusted code accordingly.
+
+On Linux the sandbox is [bubblewrap](https://github.com/containers/bubblewrap) with an allow-list instead: the entry sees the system directories read-only, the `compat/` shims, the WFDB tools, a private `/tmp` and its own work folder, and nothing else exists for it. It has no network and its own process namespace. The runner refuses to start if a protected folder would be visible, or if the sandbox fails a start-up probe, so a broken sandbox can't pass for entries scoring zero. Ubuntu 23.10+ restricts the user namespaces bubblewrap needs; `setup_linux.sh` lifts that only on CI runners.
 
 Those changes could in principle alter results. That's precisely what the comparison with the archive detects, and why it decides what gets reported.
 
 ## Limitations
 
-- **One platform.** macOS on Apple Silicon only, with Octave 11 rather than the 2014 version. Linux support is next.
+- **Results depend on the platform.** The published results come from macOS on Apple Silicon with Octave 11, not the 2014 version. Linux x86_64 and arm64 give 18 and 15 exact entries instead of 17. Some causes are explained and some are not; see [On Linux](#on-linux). Only one machine of each kind was used.
 - **Not every entry is deterministic here.** `rapr-25` doesn't give the same answer twice; see [below](#rapr-25-isnt-reproducible-here).
 - **Exit codes are recorded but don't decide anything.** Many 2014 scripts exit oddly. `jesus.presedo-15` and `lixuejianwork-15` exit non-zero on all 100 training records yet reproduce exactly. The archive comparison is the test.
 - **Exact reproduction is checked on the training set only**, because that's all entries archived. A pass there doesn't prove identical behaviour on the augmented set.
@@ -149,7 +209,7 @@ Those changes could in principle alter results. That's precisely what the compar
 - **Library defaults only.** This isn't a tuned comparison, and the libraries are not at fault for lacking a second signal.
 - **Benchmark scores are not clinical performance.** Nothing here supports clinical use or a claim about patient outcomes.
 - **Record 42878 has no ECG.** Under the Challenge rule, ECG-only detectors score zero on it, so they're also compared on the other 99 records above.
-- **`fetch` is unverified end to end.** PhysioNet returned HTTP 500 on every attempt during final verification, so the clean-clone run used a local copy of the same archive. Everything after the download ran from a clean clone. CI passes on GitHub Actions on Linux, where tests that need the native tools or the data are skipped, so it doesn't exercise the sandbox.
+- **The download was verified after publication, not before.** PhysioNet returned HTTP 500 during final verification, so the clean-clone run used a local copy. Downloads on 2026-11-07, on macOS and on both Linux runners, matched that copy's checksum. CI's plain test job skips the tests that need native tools or data; the `linux-native` job runs them and fails on any skip.
 - **Records are treated as independent.** Intervals resample records. Records from one patient, if any, would make them too narrow. Intervals are uncorrected unless labelled adjusted.
 
 ### `rapr-25` isn't reproducible here
@@ -165,12 +225,12 @@ Results from this entry vary between runs with no change to the entry or its dat
 | 1858 | 439 / 666 / 344 | 461 / 305 / 322 | 439 / 666 / 344 |
 | 2970 | 904 / 3 / 36 | 905 / 5 / 35 | 904 / 3 / 36 |
 
-Each clone was compared with the committed results across all 8,400 record results. The first differed on 5 and the second on 3, every one from `rapr-25`, and the affected records changed between runs, so other records could vary too. All other entries matched in both clones. **The runs used different commits:** the committed results `bd14d97`, clone 1 `b538a01`, clone 2 `8b42006`. None of the changes between them touched the entries or the data, and every other entry's results matched. Three runs on one machine aren't a formal determinism study, and `rapr-25` is the only entry shown to vary so far.
+Each clone was compared with the committed results across all 8,400 record results. The first differed on 5 and the second on 3, every one from `rapr-25`, and the affected records changed between runs, so other records could vary too. All other entries matched in both clones. **The runs used different commits:** the committed results `bd14d97`, clone 1 `b538a01`, clone 2 `8b42006`. None of the changes between them touched the entries or the data, and every other entry's results matched. A fourth full run on 2026-11-07, after the runner gained Linux support, differed from the committed results on 4 of 8,400 records, again all `rapr-25`. Records 1019, 1565 and 1858 gave clone 1's values above, and record 2800 changed from 653 / 137 / 99 to 653 / 139 / 99. Four runs on one machine aren't a formal determinism study, and `rapr-25` is the only entry shown to vary so far. **On Linux it doesn't run at all**: its `inspectrecord` overflows a 20-byte buffer on every record, and Ubuntu's hardened build aborts it ([On Linux](#on-linux)). The overflow happens on macOS too, where the program is not stopped. It is undefined behaviour and so a *possible* source of the variation here; whether it actually causes it has not been tested.
 
 ## Roadmap
 
-- Linux and container support, plus a determinism check
-- Bring back more of the 18 entries that didn't reproduce, keeping the archive as the only test of success
+- Isolate the unexplained Linux differences (a sanitizer build of `jesus.presedo-15`; Octave 11 on Linux to separate the Octave version from the platform), then container support
+- Bring back more of the 18 entries that didn't reproduce exactly on macOS, keeping the archive as the only test of success
 - Tuned library configurations as a separate, clearly labelled comparison
 - A leave-records-out evaluation for any method tuned on this data
 

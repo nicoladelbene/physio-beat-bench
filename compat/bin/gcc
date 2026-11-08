@@ -12,4 +12,6 @@ extra=(-w -fcommon -ffp-contract=off -Wno-return-mismatch -Wno-int-conversion -W
 [ "$is_c" = 1 ] && extra+=(-std=gnu89)
 extra+=("-I$PHYSIO_BEAT_BENCH_COMPAT/include" -I/opt/homebrew/include -L/opt/homebrew/lib)
 [ -n "$WFDB_HOME" ] && extra+=("-I$WFDB_HOME/include" "-L$WFDB_HOME/lib" "-Wl,-rpath,$WFDB_HOME/lib")
-exec /usr/bin/clang "${extra[@]}" "${args[@]}"
+# Linux uses gcc, as the 2014 Challenge's own Linux build did; macOS has clang only.
+case "$(uname -s)" in Darwin) compiler=/usr/bin/clang ;; *) compiler=/usr/bin/gcc ;; esac
+exec "$compiler" "${extra[@]}" "${args[@]}"

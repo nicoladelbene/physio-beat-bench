@@ -2,14 +2,16 @@
 
 import os
 import stat
-import sys
 from pathlib import Path
 
 import pytest
+from conftest import sandbox_problem
 
 from physio_beat_bench.runner import RecordStatus, run_entry
 
-pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="sandbox-exec is macOS only")
+pytestmark = pytest.mark.skipif(
+    sandbox_problem() is not None, reason=f"no working sandbox: {sandbox_problem()}"
+)
 
 
 def make_entry(root: Path, next_body: str, setup_body: str = "true", archived: dict | None = None):
@@ -54,12 +56,13 @@ def run(tmp_path, entry, records, names=("100",), **kwargs):
 
 
 def test_entry_output_is_collected_and_compared_with_its_archive(tmp_path):
-    (tmp_path / "output.qrs").write_bytes(beats(10, 20))
     entry = make_entry(
         tmp_path,
-        f'cp "{tmp_path}/output.qrs" "$1.qrs"',
+        'cp output.qrs "$1.qrs"',
         archived={"100": beats(10, 20), "101": beats(10, 21)},
     )
+    # Shipped inside the entry: on Linux, nothing outside the work directory is visible at all.
+    (entry / "output.qrs").write_bytes(beats(10, 20))
     records = make_records(tmp_path, "100", "101")
     results = run(tmp_path, entry, records, ("100", "101"))
     assert [(r.record, r.status, r.reproduced) for r in results] == [

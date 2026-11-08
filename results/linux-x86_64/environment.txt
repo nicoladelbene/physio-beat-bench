@@ -1,0 +1,12 @@
+os         Linux 7.0.0-1017-azure x86_64
+release    Ubuntu 24.04.5 LTS
+compiler   gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+octave     GNU Octave, version 8.4.0
+packages   control-4.0.1 image-2.14.0 signal-1.4.5 statistics-1.6.3 
+mkoctfile  present
+java       openjdk version "21.0.12.1" 2026-08-18
+wfdb       10.7.0
+python     Python 3.12.3
+neurokit2  0.3.0
+sandbox    bubblewrap 0.9.0
+commit     1a8af39

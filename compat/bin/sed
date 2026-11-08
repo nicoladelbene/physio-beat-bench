@@ -1,5 +1,6 @@
 #!/bin/bash
-# GNU `sed -i EXPR FILE` needs an explicit empty suffix on BSD sed.
+# GNU `sed -i EXPR FILE` needs an explicit empty suffix on BSD sed. GNU sed (Linux) passes through.
+[ "$(uname -s)" != Darwin ] && exec /usr/bin/sed "$@"
 args=()
 for a in "$@"; do
   if [ "$a" = "-i" ]; then args+=(-i ''); else args+=("$a"); fi

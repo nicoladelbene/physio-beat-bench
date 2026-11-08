@@ -2,7 +2,11 @@
 
 Enforced by the sandbox for every run: no network; no reads of the records folder (and so the
 reference annotations), the pristine entry or the moved archived outputs; writes only to the work
-directory, the system's per-user temp folder and /dev.
+directory, a private temp folder and /dev.
+
+macOS uses sandbox-exec with a deny-list profile (compat/sandbox.sb). Linux uses bubblewrap with an
+allow-list: the entry sees the system directories, the compat shims, the WFDB tools and its own
+work directory, and nothing else exists for it. That is stricter than the macOS profile.
 """
 
 from __future__ import annotations
@@ -11,9 +15,12 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import cache
 from pathlib import Path
 
 from .annotations import same_beats
@@ -49,11 +56,24 @@ def wfdb_home() -> Path | None:
     return Path(configured) if configured else None
 
 
+def _linux_java_bin(jvm: Path = Path("/usr/lib/jvm")) -> list[str]:
+    """The newest distribution OpenJDK, 18 or later, so Java sources are read as UTF-8 under
+    LC_ALL=C (JEP 400), as the macOS JDK does. Older JDKs read them as ASCII and some entries'
+    sources then fail to compile. Empty if none is installed."""
+    found = []
+    for home in jvm.glob("java-*-openjdk*"):
+        version = home.name.split("-")[1]
+        if version.isdigit() and int(version) >= 18 and (home / "bin" / "java").exists():
+            found.append((int(version), home / "bin"))
+    return [str(max(found)[1])] if found else []
+
+
 def _environment(work: Path) -> dict[str, str]:
     path = [
         str(COMPAT / "bin"),
         "/opt/homebrew/bin",
         "/opt/homebrew/opt/openjdk/bin",
+        *(_linux_java_bin() if sys.platform.startswith("linux") else []),
         "/usr/local/bin",
         "/usr/bin",
         "/bin",
@@ -77,22 +97,101 @@ def _environment(work: Path) -> dict[str, str]:
             CPATH=str(home / "include"),
             LIBRARY_PATH=str(home / "lib"),
             DYLD_FALLBACK_LIBRARY_PATH=str(home / "lib"),
+            LD_LIBRARY_PATH=str(home / "lib"),
             WFDB_HOME=str(home),
         )
     env["PATH"] = ":".join(path)
     return env
 
 
+class SandboxUnavailable(RuntimeError):
+    """The isolation the results depend on can't be set up on this machine."""
+
+
+def _linux_system_mounts() -> list[str]:
+    arguments = ["--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc"]
+    for name in ("/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32"):
+        path = Path(name)
+        if path.is_symlink():  # merged-/usr systems
+            arguments += ["--symlink", os.readlink(path), name]
+        elif path.is_dir():
+            arguments += ["--ro-bind", name, name]
+    return arguments
+
+
+def _linux_readable(work: Path) -> list[Path]:
+    """Everything outside the system directories that an entry may read, besides its work dir."""
+    readable = [COMPAT]
+    home = wfdb_home()
+    if home:
+        readable.append(home.resolve())
+    if OCTAVE_PACKAGE_LIST:  # user-installed Octave packages sit beside their list file
+        readable.append(Path(OCTAVE_PACKAGE_LIST).resolve().parent)
+    return readable
+
+
+def _check_nothing_denied_is_visible(visible: list[Path], denied: dict[str, Path]) -> None:
+    for name, path in denied.items():
+        target = path.resolve()
+        for allowed in visible:
+            if target == allowed or target.is_relative_to(allowed):
+                raise SandboxUnavailable(f"{name} ({target}) would be visible through {allowed}")
+
+
+def _sandbox_command(work: Path, denied: dict[str, Path]) -> list[str]:
+    if sys.platform == "darwin":
+        return [
+            "sandbox-exec", "-f", str(COMPAT / "sandbox.sb"),
+            "-D", f"WORK={work}",
+            *(item for name, path in denied.items() for item in ("-D", f"{name}={path}")),
+        ]  # fmt: skip
+    if sys.platform.startswith("linux"):
+        if shutil.which("bwrap") is None:
+            raise SandboxUnavailable("bwrap is not installed; see scripts/setup_linux.sh")
+        readable = _linux_readable(work)
+        _check_nothing_denied_is_visible([*readable, work.resolve()], denied)
+        command = [
+            "bwrap", "--unshare-all", "--die-with-parent", "--new-session",
+            *_linux_system_mounts(),
+            "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/var/tmp",
+        ]  # fmt: skip
+        for path in readable:
+            command += ["--ro-bind", str(path), str(path)]
+        return [*command, "--bind", str(work), str(work), "--chdir", str(work)]
+    raise SandboxUnavailable(f"no sandbox implemented for {sys.platform}")
+
+
+@cache
+def sandbox_ready() -> None:
+    """Fail loudly if the sandbox can't start, rather than letting every entry score zero."""
+    with tempfile.TemporaryDirectory() as folder:
+        probe = Path(folder).resolve() / "probe"
+        probe.mkdir()
+        hidden = Path(folder).resolve() / "hidden"  # the macOS profile requires every parameter
+        denied = {name: hidden for name in ("ANSWERS", "RECORDS", "PRISTINE", "SOURCES")}
+        command = [*_sandbox_command(probe, denied), "/bin/sh", "-c", "echo ok > ready"]
+        try:
+            done = subprocess.run(
+                command, cwd=probe, env=_environment(probe), capture_output=True, text=True,
+                timeout=60,
+            )  # fmt: skip
+        except OSError as error:
+            raise SandboxUnavailable(str(error)) from error
+        if done.returncode != 0 or not (probe / "ready").exists():
+            hint = ""
+            if sys.platform.startswith("linux"):
+                hint = (
+                    " On Ubuntu 23.10 or later, AppArmor may block unprivileged user namespaces;"
+                    " see scripts/setup_linux.sh."
+                )
+            raise SandboxUnavailable(f"sandbox failed to start: {done.stderr.strip()}{hint}")
+
+
 def _run_sandboxed(
     script: str, args: list[str], work: Path, denied: dict[str, Path], timeout: float, log: Path
 ) -> int | None:
     """Run a script in the sandbox. Returns its exit code, or None if it timed out."""
-    command = [
-        "sandbox-exec", "-f", str(COMPAT / "sandbox.sb"),
-        "-D", f"WORK={work}",
-        *(item for name, path in denied.items() for item in ("-D", f"{name}={path}")),
-        "bash", f"./{script}", *args,
-    ]  # fmt: skip
+    command = [*_sandbox_command(work, denied), "bash", f"./{script}", *args]
     (work / ".tmp").mkdir(exist_ok=True)
     with log.open("ab") as output:
         process = subprocess.Popen(
@@ -107,13 +206,17 @@ def _run_sandboxed(
         try:
             return process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
+            # On Linux, killing bwrap also ends the entry's whole PID namespace (--die-with-parent).
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
             return None
 
 
 def _is_foreign_binary(path: Path) -> bool:
-    """True for Linux-built objects, which would stop `make` rebuilding them on this machine."""
+    """True for objects shipped prebuilt in the archive, which would stop `make` rebuilding them.
+
+    Removed on every platform, Linux included, so each entry is always built from its source here.
+    """
     if path.suffix == ".o":
         return True
     try:
@@ -182,6 +285,7 @@ def run_entry(
 
     `sources` is the folder of entry archives, which also hold archived outputs.
     """
+    sandbox_ready()
     entry_work, answers = _prepare(entry, work)
     denied = {
         "ANSWERS": answers,
