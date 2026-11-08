@@ -79,8 +79,10 @@ def main() -> None:
         frames = [pd.read_csv(results / name) for name in names if (results / name).exists()]
         combined = pd.concat(frames)
         summary = add_official_scores(summarise(combined), layout.data / "rankings-20150413")
-        figure(summary, Path("docs/scores.png"))
-        outcomes_figure(summary, Path("docs/outcomes.png"))
+        # The README's figures come from the default results; any other run keeps its own.
+        figures = Path("docs") if results == Path("results").resolve() else results
+        figure(summary, figures / "scores.png")
+        outcomes_figure(summary, figures / "outcomes.png")
         print(reproduction_tiers(summary))
         print({"healthy_looking_mismatches": healthy_looking_mismatches(summary)})
         print(official_agreement(summary))
@@ -89,7 +91,7 @@ def main() -> None:
         print(paired.to_string(index=False))
         summary.to_csv(results / "summary.csv", index=False)
         reproduction_table(summary).to_csv(results / "reproduction.csv", index=False)
-        reproduction_map(combined, summary, Path("docs/reproduction_map.png"))
+        reproduction_map(combined, summary, figures / "reproduction_map.png")
         selection = method_selection(combined, summary)
         selection.to_csv(results / "selection.csv", index=False)
         print(selection.to_string(index=False))
